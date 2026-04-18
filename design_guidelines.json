@@ -1,0 +1,128 @@
+{
+  "theme": "dark",
+  "archetype": "4 (Swiss & High-Contrast)",
+  "rationale": "For 'UltimateDesk CNC Pro', we require a UI that balances software interface with physical manufacturing. Using Archetype 4 gives it a commanding, precision-first aesthetic. Applying E1's 'Clay & Crisp' Neumorphism (Surface Strategy 3) grounds the digital controls in reality, mimicking a physical CNC console. The 'Crystal Glass' strategy is reserved for the floating AI chat over the 3D canvas, ensuring maximum visibility of the 3D model. We use an intense Signal Red to drive high contrast against the dark base.",
+  "colors": {
+    "dark": {
+      "background": "#1A1A1A",
+      "surface": "#222222",
+      "surface_elevated": "#2A2A2A",
+      "primary": "#FF3B30",
+      "primary_hover": "#FF5B52",
+      "text_primary": "#FFFFFF",
+      "text_secondary": "#A1A1AA",
+      "border": "rgba(255, 255, 255, 0.05)",
+      "success": "#34C759"
+    },
+    "light": {
+      "background": "#F5F5F7",
+      "surface": "#E8E8ED",
+      "surface_elevated": "#FFFFFF",
+      "primary": "#FF3B30",
+      "primary_hover": "#D92E25",
+      "text_primary": "#121212",
+      "text_secondary": "#52525B",
+      "border": "rgba(0, 0, 0, 0.05)",
+      "success": "#28A745"
+    }
+  },
+  "typography": {
+    "headings": {
+      "family": "Cabinet Grotesk",
+      "weight": "font-black",
+      "tracking": "tracking-tighter",
+      "notes": "Used for all H1/H2 titles. Delivers a heavy, structural, and unyielding tone."
+    },
+    "body": {
+      "family": "Work Sans",
+      "weight": "font-normal",
+      "tracking": "tracking-normal",
+      "notes": "Legible, robust sans-serif for UI elements, chat logs, and long-form text."
+    },
+    "mono": {
+      "family": "JetBrains Mono",
+      "weight": "font-medium",
+      "tracking": "tracking-tight",
+      "notes": "CRITICAL: Must be used for procedural parameters, dimensions (e.g., 610mm), nesting stats, and G-Code displays."
+    }
+  },
+  "surface_strategies": {
+    "neumorphism": {
+      "type": "Clay & Crisp",
+      "description": "Primary strategy for configuration sidebars, sliders, and parameter toggles.",
+      "implementation": {
+        "dark": "bg-[#222222] shadow-[4px_4px_10px_rgba(0,0,0,0.5),-4px_-4px_10px_rgba(255,255,255,0.03)] border border-white/5 rounded-xl",
+        "light": "bg-[#E8E8ED] shadow-[4px_4px_10px_rgba(0,0,0,0.1),-4px_-4px_10px_rgba(255,255,255,0.8)] border border-black/5 rounded-xl"
+      },
+      "active_state": "shadow-[inset_4px_4px_10px_rgba(0,0,0,0.5),inset_-4px_-4px_10px_rgba(255,255,255,0.03)]"
+    },
+    "glassmorphism": {
+      "type": "Crystal Glass",
+      "description": "Used ONLY for overlays directly on top of the Three.js canvas (e.g., AI Chat Designer dialog, AR export toasts).",
+      "implementation": {
+        "dark": "backdrop-blur-2xl bg-black/50 border border-white/10 shadow-2xl saturate-150",
+        "light": "backdrop-blur-2xl bg-white/60 border border-black/5 shadow-2xl saturate-150"
+      }
+    }
+  },
+  "spacing_and_layout": {
+    "grid_system": {
+      "mode": "Control Room Grid",
+      "description": "App layout must utilize 100% of screen space. The 3D canvas is the hero.",
+      "gap": "gap-4 md:gap-6",
+      "padding": "p-4 md:p-6",
+      "structure": "grid-cols-1 lg:grid-cols-12. Sidebar/Chat takes col-span-12 lg:col-span-3. 3D Preview takes col-span-12 lg:col-span-9."
+    },
+    "general": {
+      "rule": "Generous internal padding in cards (p-6). Use p-4 for tighter widgets."
+    }
+  },
+  "motion_and_interactions": {
+    "hover": "Hover states must increase contrast. Use text-white on hover for dark mode buttons.",
+    "transitions": "transition-all duration-300 ease-[cubic-bezier(0.25,1,0.5,1)]",
+    "3d_scene": "Three.js implementation MUST have smooth dampening on OrbitControls. Explode view should use framer-motion-3d or @react-spring/three for fluid parts separation."
+  },
+  "components": {
+    "ai_chat_designer": {
+      "ui": "Floats on the left (lg) or bottom (mobile). Uses 'Crystal Glass' if overlaying 3D, or 'Clay & Crisp' if in sidebar.",
+      "interaction": "Real-time updates to 3D. Highlight extracted parameters in JetBrains Mono within chat bubbles."
+    },
+    "3d_preview": {
+      "tech": "React Three Fiber (R3F)",
+      "lighting": "Use @react-three/drei <Environment preset='studio' /> to highlight 18mm plywood grain correctly.",
+      "features": "Buttons for 'Explode View', 'AR Export (GLB)', and 'Toggle Dimensions'."
+    },
+    "cnc_outputs": {
+      "ui": "A dense 'Terminal' styled data table (Grid Borders strategy).",
+      "metrics": "Display waste <5% in bright success color (#34C759). List DXF/SVG/PDF/G-code buttons."
+    },
+    "payments": {
+      "ui": "Pro Export ($4.99/mo) locked behind a high-contrast 'Tracing Beam' card or vibrant primary CTA."
+    }
+  },
+  "icons_library": "@phosphor-icons/react",
+  "image_urls": {
+    "hero_landing_bg": {
+      "url": "https://images.unsplash.com/photo-1603481618010-21dd9adb7d1d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA0MTJ8MHwxfHNlYXJjaHwxfHxnYW1pbmclMjBzZXR1cCUyMHVsdHJhd2lkZSUyMG1vbml0b3IlMjBkYXJrJTIwZGVza3xlbnwwfHx8fDE3NzY1MDE4MDB8MA&ixlib=rb-4.1.0&q=85",
+      "description": "Dark gaming desk setup with ultrawide monitor - to be used in landing page hero or 'Presets' cards with heavy bg-black/50 overlay."
+    },
+    "office_preset_bg": {
+      "url": "https://images.unsplash.com/photo-1603481588273-2f908a9a7a1b?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA0MTJ8MHwxfHNlYXJjaHwyfHxnYW1pbmclMjBzZXR1cCUyMHVsdHJhd2lkZSUyMG1vbml0b3IlMjBkYXJrJTIwZGVza3xlbnwwfHx8fDE3NzY1MDE4MDB8MA&ixlib=rb-4.1.0&q=85",
+      "description": "Alternative clean desk setup - for office preset visual."
+    },
+    "cnc_manufacturing_bg": {
+      "url": "https://images.unsplash.com/photo-1735494035457-b6e8f68b5248?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1ODB8MHwxfHNlYXJjaHwxfHxjbmMlMjBtYWNoaW5lJTIwcGx5d29vZCUyMGN1dHxlbnwwfHx8fDE3NzY1MDE4MDR8MA&ixlib=rb-4.1.0&q=85",
+      "description": "Industrial/Machine setting - use for 'How it works' or checkout page background texture."
+    }
+  },
+  "testing": "All interactive and key informational elements MUST include a 'data-testid' attribute (e.g., data-testid='chat-submit-btn', data-testid='pro-upgrade-btn').",
+  "instructions_to_main_agent": [
+    "INSTALL REQUIRED LIBRARIES: yarn add @phosphor-icons/react @react-three/fiber @react-three/drei three framer-motion",
+    "CRITICAL: Adhere to the 'Clay & Crisp' neumorphic classes provided for inputs and sidebars. Standard flat Shadcn will not meet the industrial design requirement.",
+    "Do NOT use 'Inter' for headings. Ensure 'Cabinet Grotesk' is imported and applied via Tailwind config.",
+    "In the configurator, wrap the main Three.js viewer in a 'col-span-12 lg:col-span-9' container. Make sure its height is constrained or fills the viewport (`h-[calc(100vh-theme(spacing.16))]`).",
+    "Ensure Dark/Light mode toggle switches the base classes from #1A1A1A to #F5F5F7.",
+    "For the PWA requirement, ensure manifest and service workers are correctly mapped out in the build.",
+    "Stripe integration placeholders must use the high-contrast Primary button styling."
+  ]
+}
