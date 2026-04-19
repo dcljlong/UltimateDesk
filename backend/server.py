@@ -849,19 +849,397 @@ async def material_estimate(width: int = 1800, depth: int = 800, height: int = 7
 
 # ============== PAYMENT ROUTES ==============
 
-PRO_SUBSCRIPTION_PRICE = 4.99
+# Pricing tiers
+SINGLE_EXPORT_PRICE = 4.99
+PRO_MONTHLY_PRICE = 19.00
 
-@payments_router.post("/create-checkout")
-async def create_checkout(request: Request):
+class ExportRequest(BaseModel):
+    params: DesignParams
+    design_name: str = "UltimateDesk Design"
+    export_type: str = "single"  # "single" or "subscription"
+
+class ExportResponse(BaseModel):
+    success: bool
+    download_urls: Optional[Dict[str, str]] = None
+    message: str
+    disclaimer: str = ""
+
+# ============== FILE GENERATION FUNCTIONS ==============
+
+def generate_full_gcode(parts: List[Dict], config: CNCConfig, design_name: str) -> str:
+    """Generate complete production G-code for all parts"""
+    lines = [
+        f"; ========================================",
+        f"; UltimateDesk CNC Pro - Production G-Code",
+        f"; Design: {design_name}",
+        f"; Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}",
+        f"; ========================================",
+        f";",
+        f"; IMPORTANT SAFETY DISCLAIMER:",
+        f"; This G-code is a REFERENCE FILE. You MUST verify all toolpaths",
+        f"; in your CAM software before cutting. UltimateDesk is not responsible",
+        f"; for machine damage, material waste, or injury from unverified toolpaths.",
+        f";",
+        f"; Material: 18mm NZ Plywood (2400x1200mm sheets)",
+        f"; Bit Size: {config.bit_size}mm end mill",
+        f"; Cut Depth Per Pass: {config.cut_depth_per_pass}mm",
+        f"; Feed Rate: {1500 if config.bit_size <= 6 else 1200} mm/min",
+        f"; Plunge Rate: 300 mm/min",
+        f"; Safe Height: 10mm",
+        f";",
+        f"; Total Parts: {len(parts)}",
+        f"; ========================================",
+        "",
+        "G21 ; Set units to millimeters",
+        "G90 ; Absolute positioning",
+        "G17 ; XY plane selection",
+        "G54 ; Work coordinate system",
+        "",
+        "M3 S18000 ; Spindle on at 18000 RPM",
+        "G4 P3 ; Dwell 3 seconds for spindle to reach speed",
+        ""
+    ]
+    
+    feed_rate = 1500 if config.bit_size <= 6 else 1200
+    plunge_rate = 300
+    safe_height = 10
+    
+    for i, part in enumerate(parts):
+        x, y = part.get('x', 0), part.get('y', 0)
+        w, h = part['width'], part['height']
+        
+        lines.append(f"; ----------------------------------------")
+        lines.append(f"; Part {i+1}: {part['name']}")
+        lines.append(f"; Dimensions: {w}mm x {h}mm")
+        lines.append(f"; Position: X{x} Y{y}")
+        if part.get('rotated'):
+            lines.append(f"; Note: Part is ROTATED 90 degrees")
+        lines.append(f"; ----------------------------------------")
+        
+        lines.append(f"G0 Z{safe_height} ; Safe height")
+        lines.append(f"G0 X{x} Y{y} ; Rapid to start position")
+        
+        passes = math.ceil(config.material_thickness / config.cut_depth_per_pass)
+        for p in range(passes):
+            depth = min((p + 1) * config.cut_depth_per_pass, config.material_thickness)
+            lines.append(f"")
+            lines.append(f"; Pass {p+1}/{passes} - Depth: {depth}mm")
+            lines.append(f"G1 Z-{depth} F{plunge_rate}")
+            lines.append(f"G1 X{x + w} F{feed_rate}")
+            lines.append(f"G1 Y{y + h}")
+            lines.append(f"G1 X{x}")
+            lines.append(f"G1 Y{y}")
+        
+        lines.append(f"G0 Z{safe_height} ; Retract")
+        lines.append("")
+    
+    lines.extend([
+        "; ========================================",
+        "; Program End",
+        "; ========================================",
+        "G0 Z25 ; Final retract to safe height",
+        "M5 ; Spindle off",
+        "G0 X0 Y0 ; Return to machine origin",
+        "M30 ; Program end",
+        "",
+        "; Thank you for using UltimateDesk CNC Pro!",
+        "; Questions? support@ultimatedesk.co.nz"
+    ])
+    
+    return "\n".join(lines)
+
+def generate_dxf(parts: List[Dict], config: CNCConfig, design_name: str) -> str:
+    """Generate DXF file for CAD/CAM import"""
+    # DXF R12 format (widely compatible)
+    dxf_lines = [
+        "0", "SECTION",
+        "2", "HEADER",
+        "9", "$ACADVER",
+        "1", "AC1009",
+        "9", "$INSBASE",
+        "10", "0.0",
+        "20", "0.0",
+        "30", "0.0",
+        "9", "$EXTMIN",
+        "10", "0.0",
+        "20", "0.0",
+        "30", "0.0",
+        "9", "$EXTMAX",
+        "10", str(config.sheet_width),
+        "20", str(config.sheet_height),
+        "30", "0.0",
+        "0", "ENDSEC",
+        "0", "SECTION",
+        "2", "ENTITIES"
+    ]
+    
+    for i, part in enumerate(parts):
+        x, y = part.get('x', 0), part.get('y', 0)
+        w, h = part['width'], part['height']
+        
+        # Draw rectangle for each part using LINE entities
+        # Bottom edge
+        dxf_lines.extend([
+            "0", "LINE",
+            "8", f"PART_{i+1}_{part['name'].replace(' ', '_')}",
+            "10", str(x),
+            "20", str(y),
+            "30", "0.0",
+            "11", str(x + w),
+            "21", str(y),
+            "31", "0.0"
+        ])
+        # Right edge
+        dxf_lines.extend([
+            "0", "LINE",
+            "8", f"PART_{i+1}_{part['name'].replace(' ', '_')}",
+            "10", str(x + w),
+            "20", str(y),
+            "30", "0.0",
+            "11", str(x + w),
+            "21", str(y + h),
+            "31", "0.0"
+        ])
+        # Top edge
+        dxf_lines.extend([
+            "0", "LINE",
+            "8", f"PART_{i+1}_{part['name'].replace(' ', '_')}",
+            "10", str(x + w),
+            "20", str(y + h),
+            "30", "0.0",
+            "11", str(x),
+            "21", str(y + h),
+            "31", "0.0"
+        ])
+        # Left edge
+        dxf_lines.extend([
+            "0", "LINE",
+            "8", f"PART_{i+1}_{part['name'].replace(' ', '_')}",
+            "10", str(x),
+            "20", str(y + h),
+            "30", "0.0",
+            "11", str(x),
+            "21", str(y),
+            "31", "0.0"
+        ])
+        
+        # Add part label as TEXT
+        dxf_lines.extend([
+            "0", "TEXT",
+            "8", f"LABELS",
+            "10", str(x + w/2),
+            "20", str(y + h/2),
+            "30", "0.0",
+            "40", "20.0",
+            "1", f"{part['name']} ({w}x{h})"
+        ])
+    
+    dxf_lines.extend([
+        "0", "ENDSEC",
+        "0", "EOF"
+    ])
+    
+    return "\n".join(dxf_lines)
+
+def generate_pdf_html(parts: List[Dict], nesting: NestingResult, params: DesignParams, design_name: str) -> str:
+    """Generate HTML that can be converted to PDF cutting sheet"""
+    sheet_w, sheet_h = 2400, 1200
+    scale = 0.25  # Scale for visualization
+    
+    # Group parts by sheet
+    sheets_parts = {}
+    for part in parts:
+        sheet_idx = part.get('sheet', 0)
+        if sheet_idx not in sheets_parts:
+            sheets_parts[sheet_idx] = []
+        sheets_parts[sheet_idx].append(part)
+    
+    html = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>{design_name} - Cutting Sheet</title>
+    <style>
+        body {{ font-family: 'Helvetica Neue', Arial, sans-serif; margin: 20px; color: #333; }}
+        h1 {{ color: #FF3B30; margin-bottom: 5px; }}
+        .header {{ border-bottom: 2px solid #FF3B30; padding-bottom: 15px; margin-bottom: 20px; }}
+        .disclaimer {{ background: #FFF3CD; border: 1px solid #FFE69C; padding: 15px; margin: 20px 0; border-radius: 8px; }}
+        .disclaimer strong {{ color: #856404; }}
+        .specs {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 20px 0; }}
+        .spec-box {{ background: #f5f5f5; padding: 10px; border-radius: 5px; text-align: center; }}
+        .spec-box .value {{ font-size: 24px; font-weight: bold; color: #FF3B30; }}
+        .spec-box .label {{ font-size: 12px; color: #666; }}
+        .sheet {{ margin: 30px 0; page-break-inside: avoid; }}
+        .sheet-title {{ font-size: 18px; font-weight: bold; margin-bottom: 10px; }}
+        .sheet-visual {{ border: 2px solid #333; background: #D4A574; position: relative; }}
+        .part {{ position: absolute; border: 2px solid #333; background: rgba(255,255,255,0.9); display: flex; align-items: center; justify-content: center; font-size: 10px; text-align: center; }}
+        .parts-list {{ margin-top: 20px; }}
+        .parts-list table {{ width: 100%; border-collapse: collapse; }}
+        .parts-list th, .parts-list td {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
+        .parts-list th {{ background: #f5f5f5; }}
+        .footer {{ margin-top: 30px; padding-top: 15px; border-top: 1px solid #ddd; font-size: 12px; color: #666; }}
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>UltimateDesk CNC Pro</h1>
+        <h2>{design_name}</h2>
+        <p>Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}</p>
+    </div>
+    
+    <div class="disclaimer">
+        <strong>⚠️ IMPORTANT SAFETY DISCLAIMER</strong><br>
+        This cutting sheet is a REFERENCE DOCUMENT. All measurements should be verified before cutting.
+        You are responsible for verifying toolpaths in your CAM software. UltimateDesk is not liable for
+        machine damage, material waste, or injury from unverified cuts.
+    </div>
+    
+    <div class="specs">
+        <div class="spec-box">
+            <div class="value">{params.width}mm</div>
+            <div class="label">Width</div>
+        </div>
+        <div class="spec-box">
+            <div class="value">{params.depth}mm</div>
+            <div class="label">Depth</div>
+        </div>
+        <div class="spec-box">
+            <div class="value">{params.height}mm</div>
+            <div class="label">Height</div>
+        </div>
+        <div class="spec-box">
+            <div class="value">{nesting.sheets_required}</div>
+            <div class="label">Sheets Required</div>
+        </div>
+    </div>
+    
+    <div class="specs">
+        <div class="spec-box">
+            <div class="value">{params.material_thickness}mm</div>
+            <div class="label">Material Thickness</div>
+        </div>
+        <div class="spec-box">
+            <div class="value">{nesting.waste_percentage}%</div>
+            <div class="label">Waste</div>
+        </div>
+        <div class="spec-box">
+            <div class="value">${nesting.sheets_required * 80:.2f}</div>
+            <div class="label">Est. Material Cost (NZD)</div>
+        </div>
+        <div class="spec-box">
+            <div class="value">{len(parts)}</div>
+            <div class="label">Total Parts</div>
+        </div>
+    </div>
+"""
+    
+    for sheet_idx, sheet_parts in sheets_parts.items():
+        html += f"""
+    <div class="sheet">
+        <div class="sheet-title">Sheet {sheet_idx + 1} of {nesting.sheets_required} (2400mm x 1200mm)</div>
+        <div class="sheet-visual" style="width: {sheet_w * scale}px; height: {sheet_h * scale}px;">
+"""
+        colors = ['#FFE4E1', '#E0FFE0', '#E0E0FF', '#FFFFE0', '#FFE0FF', '#E0FFFF']
+        for i, part in enumerate(sheet_parts):
+            color = colors[i % len(colors)]
+            html += f"""
+            <div class="part" style="left: {part['x'] * scale}px; top: {part['y'] * scale}px; width: {part['width'] * scale - 4}px; height: {part['height'] * scale - 4}px; background: {color};">
+                <span>{part['name']}<br>{part['width']}x{part['height']}</span>
+            </div>
+"""
+        html += """
+        </div>
+    </div>
+"""
+    
+    html += """
+    <div class="parts-list">
+        <h3>Parts List</h3>
+        <table>
+            <tr>
+                <th>#</th>
+                <th>Part Name</th>
+                <th>Width (mm)</th>
+                <th>Height (mm)</th>
+                <th>Sheet</th>
+                <th>Rotated</th>
+            </tr>
+"""
+    
+    for i, part in enumerate(parts):
+        html += f"""
+            <tr>
+                <td>{i + 1}</td>
+                <td>{part['name']}</td>
+                <td>{part['width']}</td>
+                <td>{part['height']}</td>
+                <td>{part.get('sheet', 0) + 1}</td>
+                <td>{'Yes' if part.get('rotated') else 'No'}</td>
+            </tr>
+"""
+    
+    html += """
+        </table>
+    </div>
+    
+    <div class="footer">
+        <p><strong>UltimateDesk CNC Pro</strong> - Professional CNC Desk Designer for Kiwi Makers</p>
+        <p>Questions? Email support@ultimatedesk.co.nz | Visit ultimatedesk.co.nz</p>
+    </div>
+</body>
+</html>
+"""
+    return html
+
+# ============== EXPORT ENDPOINTS ==============
+
+exports_router = APIRouter(prefix="/exports", tags=["Pro Exports"])
+
+@exports_router.post("/check-access")
+async def check_export_access(request: Request):
+    """Check if user has Pro access for exports"""
+    user = await get_optional_user(request)
+    
+    if not user:
+        return {
+            "has_access": False,
+            "reason": "not_authenticated",
+            "message": "Please sign in to export files"
+        }
+    
+    if user.get("is_pro"):
+        return {
+            "has_access": True,
+            "plan": "pro_unlimited",
+            "message": "You have unlimited Pro exports"
+        }
+    
+    # Check for single export credits
+    credits = await db.export_credits.find_one({"user_id": user["id"]})
+    if credits and credits.get("remaining", 0) > 0:
+        return {
+            "has_access": True,
+            "plan": "single_export",
+            "remaining": credits["remaining"],
+            "message": f"You have {credits['remaining']} export(s) remaining"
+        }
+    
+    return {
+        "has_access": False,
+        "reason": "no_credits",
+        "message": "Purchase Pro or single export to download files"
+    }
+
+@exports_router.post("/purchase-single")
+async def purchase_single_export(request: Request):
+    """Create checkout for single export ($4.99)"""
     body = await request.json()
     origin_url = body.get("origin_url", "")
     
     if not origin_url:
         raise HTTPException(status_code=400, detail="Origin URL required")
     
-    user = await get_optional_user(request)
-    user_email = user["email"] if user else "guest"
-    user_id = user["id"] if user else None
+    user = await get_current_user(request)
     
     api_key = os.environ.get("STRIPE_API_KEY")
     if not api_key:
@@ -872,30 +1250,30 @@ async def create_checkout(request: Request):
     
     stripe_checkout = StripeCheckout(api_key=api_key, webhook_url=webhook_url)
     
-    success_url = f"{origin_url}/payment/success?session_id={{CHECKOUT_SESSION_ID}}"
-    cancel_url = f"{origin_url}/pricing"
+    success_url = f"{origin_url}/export/success?session_id={{CHECKOUT_SESSION_ID}}&type=single"
+    cancel_url = f"{origin_url}/designer"
     
     checkout_request = CheckoutSessionRequest(
-        amount=PRO_SUBSCRIPTION_PRICE,
+        amount=SINGLE_EXPORT_PRICE,
         currency="nzd",
         success_url=success_url,
         cancel_url=cancel_url,
         metadata={
-            "user_email": user_email,
-            "user_id": user_id or "",
-            "product": "pro_subscription"
+            "user_id": user["id"],
+            "user_email": user["email"],
+            "product": "single_export"
         }
     )
     
     session = await stripe_checkout.create_checkout_session(checkout_request)
     
-    # Record transaction
     await db.payment_transactions.insert_one({
         "session_id": session.session_id,
-        "user_id": user_id,
-        "user_email": user_email,
-        "amount": PRO_SUBSCRIPTION_PRICE,
+        "user_id": user["id"],
+        "user_email": user["email"],
+        "amount": SINGLE_EXPORT_PRICE,
         "currency": "nzd",
+        "product": "single_export",
         "status": "pending",
         "payment_status": "initiated",
         "created_at": datetime.now(timezone.utc)
@@ -903,8 +1281,17 @@ async def create_checkout(request: Request):
     
     return {"url": session.url, "session_id": session.session_id}
 
-@payments_router.get("/status/{session_id}")
-async def get_payment_status(session_id: str, request: Request):
+@exports_router.post("/purchase-pro")
+async def purchase_pro_subscription(request: Request):
+    """Create checkout for Pro subscription ($19/mo)"""
+    body = await request.json()
+    origin_url = body.get("origin_url", "")
+    
+    if not origin_url:
+        raise HTTPException(status_code=400, detail="Origin URL required")
+    
+    user = await get_current_user(request)
+    
     api_key = os.environ.get("STRIPE_API_KEY")
     if not api_key:
         raise HTTPException(status_code=500, detail="Stripe not configured")
@@ -913,30 +1300,141 @@ async def get_payment_status(session_id: str, request: Request):
     webhook_url = f"{host_url}/api/webhook/stripe"
     
     stripe_checkout = StripeCheckout(api_key=api_key, webhook_url=webhook_url)
-    status = await stripe_checkout.get_checkout_status(session_id)
     
-    # Update transaction record
-    if status.payment_status == "paid":
-        transaction = await db.payment_transactions.find_one({"session_id": session_id})
-        if transaction and transaction.get("payment_status") != "paid":
-            await db.payment_transactions.update_one(
-                {"session_id": session_id},
-                {"$set": {"status": "complete", "payment_status": "paid", "completed_at": datetime.now(timezone.utc)}}
+    success_url = f"{origin_url}/export/success?session_id={{CHECKOUT_SESSION_ID}}&type=pro"
+    cancel_url = f"{origin_url}/pricing"
+    
+    checkout_request = CheckoutSessionRequest(
+        amount=PRO_MONTHLY_PRICE,
+        currency="nzd",
+        success_url=success_url,
+        cancel_url=cancel_url,
+        metadata={
+            "user_id": user["id"],
+            "user_email": user["email"],
+            "product": "pro_subscription"
+        }
+    )
+    
+    session = await stripe_checkout.create_checkout_session(checkout_request)
+    
+    await db.payment_transactions.insert_one({
+        "session_id": session.session_id,
+        "user_id": user["id"],
+        "user_email": user["email"],
+        "amount": PRO_MONTHLY_PRICE,
+        "currency": "nzd",
+        "product": "pro_subscription",
+        "status": "pending",
+        "payment_status": "initiated",
+        "created_at": datetime.now(timezone.utc)
+    })
+    
+    return {"url": session.url, "session_id": session.session_id}
+
+@exports_router.post("/generate")
+async def generate_export_files(export_req: ExportRequest, request: Request):
+    """Generate and return export files (DXF, G-code, PDF) - requires Pro or credits"""
+    user = await get_current_user(request)
+    
+    # Check access
+    has_pro = user.get("is_pro", False)
+    
+    if not has_pro:
+        credits = await db.export_credits.find_one({"user_id": user["id"]})
+        if not credits or credits.get("remaining", 0) <= 0:
+            raise HTTPException(
+                status_code=403, 
+                detail="Pro subscription or export credits required. Purchase at /pricing"
             )
-            # Upgrade user to pro
-            if transaction.get("user_id"):
-                await db.users.update_one(
-                    {"_id": ObjectId(transaction["user_id"])},
-                    {"$set": {"is_pro": True, "pro_since": datetime.now(timezone.utc)}}
-                )
+        # Deduct credit
+        await db.export_credits.update_one(
+            {"user_id": user["id"]},
+            {"$inc": {"remaining": -1}}
+        )
+    
+    # Generate files
+    config = CNCConfig()
+    parts = calculate_desk_parts(export_req.params)
+    nesting = simple_nesting(parts, config.sheet_width, config.sheet_height)
+    
+    # Generate all file contents
+    gcode_content = generate_full_gcode(nesting.parts, config, export_req.design_name)
+    dxf_content = generate_dxf(nesting.parts, config, export_req.design_name)
+    pdf_html = generate_pdf_html(nesting.parts, nesting, export_req.params, export_req.design_name)
+    
+    # Store export record
+    export_id = str(uuid.uuid4())
+    await db.exports.insert_one({
+        "export_id": export_id,
+        "user_id": user["id"],
+        "design_name": export_req.design_name,
+        "params": export_req.params.model_dump(),
+        "gcode": gcode_content,
+        "dxf": dxf_content,
+        "pdf_html": pdf_html,
+        "created_at": datetime.now(timezone.utc),
+        "expires_at": datetime.now(timezone.utc) + timedelta(hours=24)
+    })
+    
+    disclaimer = """IMPORTANT: These files are high-quality REFERENCE files. 
+You MUST verify all toolpaths in your CAM software (VCarve, Fusion 360, etc.) before cutting. 
+UltimateDesk is not responsible for machine damage, material waste, or injury from unverified toolpaths."""
     
     return {
-        "status": status.status,
-        "payment_status": status.payment_status,
-        "amount": status.amount_total / 100,
-        "currency": status.currency
+        "success": True,
+        "export_id": export_id,
+        "files": {
+            "gcode": f"/api/exports/download/{export_id}/gcode",
+            "dxf": f"/api/exports/download/{export_id}/dxf",
+            "pdf": f"/api/exports/download/{export_id}/pdf"
+        },
+        "disclaimer": disclaimer,
+        "message": "Export files generated successfully. Files expire in 24 hours."
     }
 
+@exports_router.get("/download/{export_id}/{file_type}")
+async def download_export_file(export_id: str, file_type: str, request: Request):
+    """Download a specific export file"""
+    user = await get_current_user(request)
+    
+    export = await db.exports.find_one({
+        "export_id": export_id,
+        "user_id": user["id"]
+    })
+    
+    if not export:
+        raise HTTPException(status_code=404, detail="Export not found or expired")
+    
+    if export.get("expires_at") and export["expires_at"] < datetime.now(timezone.utc):
+        raise HTTPException(status_code=410, detail="Export has expired. Please generate new files.")
+    
+    design_name = export.get("design_name", "UltimateDesk").replace(" ", "_")
+    
+    if file_type == "gcode":
+        content = export.get("gcode", "")
+        filename = f"{design_name}.nc"
+        media_type = "text/plain"
+    elif file_type == "dxf":
+        content = export.get("dxf", "")
+        filename = f"{design_name}.dxf"
+        media_type = "application/dxf"
+    elif file_type == "pdf":
+        content = export.get("pdf_html", "")
+        filename = f"{design_name}_cutting_sheet.html"
+        media_type = "text/html"
+    else:
+        raise HTTPException(status_code=400, detail="Invalid file type")
+    
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"'
+        }
+    )
+
+# Update webhook to handle new products
 @api_router.post("/webhook/stripe")
 async def stripe_webhook(request: Request):
     body = await request.body()
@@ -952,22 +1450,37 @@ async def stripe_webhook(request: Request):
         event = await stripe_checkout.handle_webhook(body, sig)
         
         if event.payment_status == "paid":
-            await db.payment_transactions.update_one(
-                {"session_id": event.session_id},
-                {"$set": {"status": "complete", "payment_status": "paid", "completed_at": datetime.now(timezone.utc)}}
-            )
-            
             transaction = await db.payment_transactions.find_one({"session_id": event.session_id})
-            if transaction and transaction.get("user_id"):
-                await db.users.update_one(
-                    {"_id": ObjectId(transaction["user_id"])},
-                    {"$set": {"is_pro": True, "pro_since": datetime.now(timezone.utc)}}
+            
+            if transaction:
+                await db.payment_transactions.update_one(
+                    {"session_id": event.session_id},
+                    {"$set": {"status": "complete", "payment_status": "paid", "completed_at": datetime.now(timezone.utc)}}
                 )
+                
+                product = transaction.get("product", "")
+                user_id = transaction.get("user_id")
+                
+                if user_id:
+                    if product == "pro_subscription":
+                        await db.users.update_one(
+                            {"_id": ObjectId(user_id)},
+                            {"$set": {"is_pro": True, "pro_since": datetime.now(timezone.utc)}}
+                        )
+                    elif product == "single_export":
+                        # Add 1 export credit
+                        await db.export_credits.update_one(
+                            {"user_id": user_id},
+                            {"$inc": {"remaining": 1}, "$set": {"updated_at": datetime.now(timezone.utc)}},
+                            upsert=True
+                        )
         
         return {"received": True}
     except Exception as e:
         logger.error(f"Webhook error: {e}")
         return {"received": True, "error": str(e)}
+
+PRO_SUBSCRIPTION_PRICE = PRO_MONTHLY_PRICE  # Keep backward compatibility
 
 # ============== INCLUDE ROUTERS ==============
 
@@ -976,6 +1489,7 @@ api_router.include_router(designs_router)
 api_router.include_router(chat_router)
 api_router.include_router(cnc_router)
 api_router.include_router(payments_router)
+api_router.include_router(exports_router)
 
 @api_router.get("/")
 async def root():

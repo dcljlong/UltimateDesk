@@ -10,7 +10,11 @@ import {
   CaretLeft,
   Crown,
   Rocket,
-  Lightning
+  Lightning,
+  Download,
+  FileCode,
+  FilePdf,
+  Cube as CubeIcon
 } from '@phosphor-icons/react';
 import { Button } from '../components/ui/button';
 import { useAuth } from '../context/AuthContext';
@@ -18,7 +22,6 @@ import { useTheme } from '../context/ThemeContext';
 import axios from 'axios';
 
 const getApiUrl = () => {
-  // Use window.location.origin to ensure same protocol
   if (typeof window !== 'undefined' && window.location.protocol === 'https:') {
     return window.location.origin + '/api';
   }
@@ -31,18 +34,19 @@ const Pricing = () => {
   const navigate = useNavigate();
   const { isAuthenticated, isPro } = useAuth();
   const { theme, toggleTheme } = useTheme();
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingSingle, setIsLoadingSingle] = useState(false);
+  const [isLoadingPro, setIsLoadingPro] = useState(false);
 
-  const handleUpgrade = async () => {
+  const handlePurchaseSingle = async () => {
     if (!isAuthenticated) {
       navigate('/auth', { state: { from: { pathname: '/pricing' } } });
       return;
     }
 
-    setIsLoading(true);
+    setIsLoadingSingle(true);
     try {
       const { data } = await axios.post(
-        `${API}/payments/create-checkout`,
+        `${API}/exports/purchase-single`,
         { origin_url: window.location.origin },
         { withCredentials: true }
       );
@@ -52,36 +56,68 @@ const Pricing = () => {
       }
     } catch (error) {
       console.error('Checkout error:', error);
-      alert('Failed to create checkout session. Please try again.');
+      alert('Failed to create checkout. Please try again.');
     } finally {
-      setIsLoading(false);
+      setIsLoadingSingle(false);
+    }
+  };
+
+  const handlePurchasePro = async () => {
+    if (!isAuthenticated) {
+      navigate('/auth', { state: { from: { pathname: '/pricing' } } });
+      return;
+    }
+
+    setIsLoadingPro(true);
+    try {
+      const { data } = await axios.post(
+        `${API}/exports/purchase-pro`,
+        { origin_url: window.location.origin },
+        { withCredentials: true }
+      );
+      
+      if (data.url) {
+        window.location.href = data.url;
+      }
+    } catch (error) {
+      console.error('Checkout error:', error);
+      alert('Failed to create checkout. Please try again.');
+    } finally {
+      setIsLoadingPro(false);
     }
   };
 
   const freeFeatures = [
-    { text: 'Unlimited AI design conversations', included: true },
-    { text: 'Real-time 3D preview', included: true },
-    { text: 'All desk presets', included: true },
+    { text: 'Unlimited AI desk design conversations', included: true },
+    { text: 'Real-time isometric preview', included: true },
+    { text: 'All desk presets (Gaming, Studio, Office)', included: true },
     { text: 'Explode view & dimensions', included: true },
     { text: 'Sheet nesting preview', included: true },
-    { text: 'G-Code preview', included: true },
+    { text: 'G-Code preview (first 3 parts)', included: true },
+    { text: 'Save unlimited designs', included: true },
     { text: 'Download DXF files', included: false },
     { text: 'Download full G-Code', included: false },
     { text: 'PDF cutting sheets', included: false },
-    { text: 'Priority support', included: false },
+  ];
+
+  const singleFeatures = [
+    { text: 'Everything in Free', included: true },
+    { text: '1 complete export package:', included: true },
+    { text: '→ Full DXF file (CAD-ready)', included: true, indent: true },
+    { text: '→ Complete G-Code file', included: true, indent: true },
+    { text: '→ PDF cutting sheet', included: true, indent: true },
+    { text: 'Files valid for 24 hours', included: true },
+    { text: 'Safety disclaimers included', included: true },
   ];
 
   const proFeatures = [
-    { text: 'Unlimited AI design conversations', included: true },
-    { text: 'Real-time 3D preview', included: true },
-    { text: 'All desk presets', included: true },
-    { text: 'Explode view & dimensions', included: true },
-    { text: 'Sheet nesting preview', included: true },
-    { text: 'G-Code preview', included: true },
-    { text: 'Download DXF files', included: true },
-    { text: 'Download full G-Code', included: true },
-    { text: 'PDF cutting sheets', included: true },
-    { text: 'Priority support', included: true },
+    { text: 'Everything in Free', included: true },
+    { text: 'Unlimited export packages', included: true },
+    { text: 'DXF, G-Code, PDF for every design', included: true },
+    { text: 'Priority file generation', included: true },
+    { text: 'Files never expire', included: true },
+    { text: 'Email support', included: true },
+    { text: 'Early access to new features', included: true },
   ];
 
   return (
@@ -114,48 +150,69 @@ const Pricing = () => {
       </header>
 
       {/* Content */}
-      <main className="max-w-5xl mx-auto px-4 py-16">
+      <main className="max-w-6xl mx-auto px-4 py-12">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           className="text-center mb-12"
         >
           <h1 className="text-4xl sm:text-5xl font-black tracking-tighter mb-4">
-            Simple, Fair Pricing
+            Design Free. Pay Only to Cut.
           </h1>
-          <p className="text-lg text-[var(--text-secondary)] max-w-xl mx-auto">
-            Design for free. Pay only when you're ready to cut.
+          <p className="text-lg text-[var(--text-secondary)] max-w-2xl mx-auto">
+            Create unlimited designs for free. Export production-ready CNC files when you're ready to build.
           </p>
         </motion.div>
 
+        {/* Export file types showcase */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="flex justify-center gap-6 mb-12"
+        >
+          <div className="flex items-center gap-2 px-4 py-2 neu-surface rounded-lg">
+            <FileCode size={24} className="text-blue-500" />
+            <span className="font-mono text-sm">DXF</span>
+          </div>
+          <div className="flex items-center gap-2 px-4 py-2 neu-surface rounded-lg">
+            <CubeIcon size={24} className="text-green-500" />
+            <span className="font-mono text-sm">G-Code</span>
+          </div>
+          <div className="flex items-center gap-2 px-4 py-2 neu-surface rounded-lg">
+            <FilePdf size={24} className="text-red-500" />
+            <span className="font-mono text-sm">PDF</span>
+          </div>
+        </motion.div>
+
         {/* Pricing Cards */}
-        <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+        <div className="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto">
           {/* Free Tier */}
           <motion.div
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: 0.1 }}
-            className="neu-surface p-8 rounded-xl"
+            className="neu-surface p-6 rounded-xl"
           >
             <div className="flex items-center gap-2 mb-4">
               <Rocket size={24} className="text-[var(--text-secondary)]" />
-              <h2 className="text-2xl font-bold">Free</h2>
+              <h2 className="text-xl font-bold">Free</h2>
             </div>
-            <div className="mb-6">
-              <span className="text-4xl font-black">$0</span>
+            <div className="mb-4">
+              <span className="text-3xl font-black">$0</span>
               <span className="text-[var(--text-secondary)]">/forever</span>
             </div>
-            <p className="text-[var(--text-secondary)] mb-6">
-              Perfect for exploring and designing your dream desk
+            <p className="text-[var(--text-secondary)] text-sm mb-6">
+              Design and preview unlimited desks
             </p>
 
-            <ul className="space-y-3 mb-8">
+            <ul className="space-y-2 mb-6 text-sm">
               {freeFeatures.map((feature, idx) => (
-                <li key={idx} className="flex items-center gap-2">
+                <li key={idx} className="flex items-start gap-2">
                   {feature.included ? (
-                    <Check size={18} className="text-[var(--success)]" />
+                    <Check size={16} className="text-[var(--success)] mt-0.5 flex-shrink-0" />
                   ) : (
-                    <X size={18} className="text-[var(--text-secondary)]" />
+                    <X size={16} className="text-[var(--text-secondary)] mt-0.5 flex-shrink-0" />
                   )}
                   <span className={!feature.included ? 'text-[var(--text-secondary)]' : ''}>
                     {feature.text}
@@ -174,36 +231,74 @@ const Pricing = () => {
             </Button>
           </motion.div>
 
+          {/* Single Export */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+            className="neu-surface p-6 rounded-xl border-2 border-blue-500"
+          >
+            <div className="flex items-center gap-2 mb-4">
+              <Download size={24} className="text-blue-500" />
+              <h2 className="text-xl font-bold">Single Export</h2>
+            </div>
+            <div className="mb-4">
+              <span className="text-3xl font-black">$4.99</span>
+              <span className="text-[var(--text-secondary)]"> NZD</span>
+            </div>
+            <p className="text-[var(--text-secondary)] text-sm mb-6">
+              Perfect for one-off projects
+            </p>
+
+            <ul className="space-y-2 mb-6 text-sm">
+              {singleFeatures.map((feature, idx) => (
+                <li key={idx} className={`flex items-start gap-2 ${feature.indent ? 'ml-4' : ''}`}>
+                  <Check size={16} className="text-[var(--success)] mt-0.5 flex-shrink-0" />
+                  <span>{feature.text}</span>
+                </li>
+              ))}
+            </ul>
+
+            <Button 
+              className="w-full bg-blue-500 hover:bg-blue-600 text-white"
+              onClick={handlePurchaseSingle}
+              disabled={isLoadingSingle}
+              data-testid="buy-single-btn"
+            >
+              {isLoadingSingle ? 'Loading...' : 'Buy Single Export'}
+            </Button>
+          </motion.div>
+
           {/* Pro Tier */}
           <motion.div
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.2 }}
-            className="relative neu-surface p-8 rounded-xl border-2 border-[var(--primary)]"
+            transition={{ delay: 0.3 }}
+            className="relative neu-surface p-6 rounded-xl border-2 border-[var(--primary)]"
           >
             <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-              <span className="badge-pro flex items-center gap-1">
+              <span className="badge-pro flex items-center gap-1 px-3 py-1">
                 <Crown size={12} />
-                Most Popular
+                Best Value
               </span>
             </div>
 
             <div className="flex items-center gap-2 mb-4">
               <Lightning size={24} weight="fill" className="text-[var(--primary)]" />
-              <h2 className="text-2xl font-bold">Pro</h2>
+              <h2 className="text-xl font-bold">Pro</h2>
             </div>
-            <div className="mb-6">
-              <span className="text-4xl font-black">$4.99</span>
+            <div className="mb-4">
+              <span className="text-3xl font-black">$19</span>
               <span className="text-[var(--text-secondary)]"> NZD/month</span>
             </div>
-            <p className="text-[var(--text-secondary)] mb-6">
-              Everything you need to bring your designs to life
+            <p className="text-[var(--text-secondary)] text-sm mb-6">
+              Unlimited exports for serious makers
             </p>
 
-            <ul className="space-y-3 mb-8">
+            <ul className="space-y-2 mb-6 text-sm">
               {proFeatures.map((feature, idx) => (
-                <li key={idx} className="flex items-center gap-2">
-                  <Check size={18} className="text-[var(--success)]" />
+                <li key={idx} className="flex items-start gap-2">
+                  <Check size={16} className="text-[var(--success)] mt-0.5 flex-shrink-0" />
                   <span>{feature.text}</span>
                 </li>
               ))}
@@ -215,27 +310,47 @@ const Pricing = () => {
                 disabled
               >
                 <Check size={18} className="mr-2" />
-                You're a Pro!
+                You're Pro!
               </Button>
             ) : (
               <Button 
                 className="w-full btn-primary"
-                onClick={handleUpgrade}
-                disabled={isLoading}
-                data-testid="upgrade-pro-btn"
+                onClick={handlePurchasePro}
+                disabled={isLoadingPro}
+                data-testid="buy-pro-btn"
               >
-                {isLoading ? 'Loading...' : 'Upgrade to Pro'}
+                {isLoadingPro ? 'Loading...' : 'Go Pro'}
               </Button>
             )}
           </motion.div>
         </div>
 
+        {/* Disclaimer */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.4 }}
+          className="mt-12 max-w-3xl mx-auto"
+        >
+          <div className="neu-surface p-6 rounded-xl">
+            <h3 className="font-bold mb-2 flex items-center gap-2">
+              <span className="text-yellow-500">⚠️</span>
+              Important Safety Note
+            </h3>
+            <p className="text-sm text-[var(--text-secondary)]">
+              Export files are high-quality <strong>reference files</strong>. You must verify all toolpaths in your 
+              CAM software (VCarve, Fusion 360, etc.) before cutting. UltimateDesk provides geometry-accurate 
+              files but is not responsible for machine-specific settings, material variations, or toolpath validation.
+            </p>
+          </div>
+        </motion.div>
+
         {/* FAQ */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-          className="mt-16 text-center"
+          transition={{ delay: 0.5 }}
+          className="mt-12 text-center"
         >
           <h3 className="text-xl font-bold mb-4">Questions?</h3>
           <p className="text-[var(--text-secondary)]">

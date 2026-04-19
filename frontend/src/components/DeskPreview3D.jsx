@@ -1,22 +1,37 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { ArrowsOutSimple, Ruler, Cube } from '@phosphor-icons/react';
+import { ArrowsOutSimple, Ruler, Cube, Monitor, Headphones, Lamp, MusicNote } from '@phosphor-icons/react';
 
-// Simple 2D desk visualization component 
 const DeskPreview3D = ({ params, className = '' }) => {
   const [exploded, setExploded] = useState(false);
   const [showDimensions, setShowDimensions] = useState(false);
   const canvasRef = useRef(null);
+  const animationRef = useRef(null);
+  const rotationRef = useRef(0);
 
   // Colors based on desk type
-  const colors = {
-    gaming: '#2A2A2A',
-    studio: '#3D3D3D',
-    office: '#D4A574'
+  const colorSchemes = {
+    gaming: { 
+      primary: '#1A1A1A', 
+      secondary: '#2A2A2A', 
+      accent: '#FF3B30',
+      highlight: '#FF6B5B'
+    },
+    studio: { 
+      primary: '#2D2D2D', 
+      secondary: '#3D3D3D', 
+      accent: '#6366F1',
+      highlight: '#818CF8'
+    },
+    office: { 
+      primary: '#D4A574', 
+      secondary: '#B8956E', 
+      accent: '#059669',
+      highlight: '#34D399'
+    }
   };
   
-  const baseColor = colors[params.desk_type] || colors.office;
-  const accentColor = params.has_rgb_channels ? '#FF3B30' : baseColor;
+  const colors = colorSchemes[params.desk_type] || colorSchemes.office;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -26,128 +41,311 @@ const DeskPreview3D = ({ params, className = '' }) => {
     const width = canvas.width;
     const height = canvas.height;
     
-    // Clear canvas
-    ctx.fillStyle = '#1A1A1A';
-    ctx.fillRect(0, 0, width, height);
-    
-    // Draw grid
-    ctx.strokeStyle = '#333333';
-    ctx.lineWidth = 0.5;
-    for (let i = 0; i < width; i += 40) {
+    const draw = () => {
+      // Clear canvas with gradient background
+      const bgGradient = ctx.createRadialGradient(width/2, height/2, 0, width/2, height/2, width);
+      bgGradient.addColorStop(0, '#1F1F1F');
+      bgGradient.addColorStop(1, '#0D0D0D');
+      ctx.fillStyle = bgGradient;
+      ctx.fillRect(0, 0, width, height);
+      
+      // Draw grid with perspective feel
+      ctx.strokeStyle = 'rgba(255,255,255,0.03)';
+      ctx.lineWidth = 1;
+      for (let i = 0; i < width; i += 50) {
+        ctx.beginPath();
+        ctx.moveTo(i, 0);
+        ctx.lineTo(i, height);
+        ctx.stroke();
+      }
+      for (let i = 0; i < height; i += 50) {
+        ctx.beginPath();
+        ctx.moveTo(0, i);
+        ctx.lineTo(width, i);
+        ctx.stroke();
+      }
+      
+      // Scale factor
+      const scale = Math.min(width / (params.width * 1.3), height / (params.height * 2)) * 0.8;
+      const centerX = width / 2;
+      const centerY = height / 2 + 50;
+      
+      // Isometric projection settings
+      const isoAngle = Math.PI / 6;
+      const deskW = params.width * scale * 0.55;
+      const deskD = params.depth * scale * 0.35;
+      const deskH = params.height * scale * 0.55;
+      const t = Math.max(params.material_thickness * scale * 0.15, 4);
+      
+      const offsetX = exploded ? 25 : 0;
+      const offsetY = exploded ? 20 : 0;
+      
+      // Subtle rotation animation
+      const wobble = Math.sin(rotationRef.current * 0.02) * 3;
+      
+      // Helper function for isometric transformation
+      const isoX = (x, z) => centerX + (x - z) * Math.cos(isoAngle) + wobble;
+      const isoY = (y, x, z) => centerY - y + (x + z) * Math.sin(isoAngle) * 0.5;
+      
+      // Draw floor shadow
+      ctx.fillStyle = 'rgba(0,0,0,0.4)';
       ctx.beginPath();
-      ctx.moveTo(i, 0);
-      ctx.lineTo(i, height);
-      ctx.stroke();
-    }
-    for (let i = 0; i < height; i += 40) {
-      ctx.beginPath();
-      ctx.moveTo(0, i);
-      ctx.lineTo(width, i);
-      ctx.stroke();
-    }
+      ctx.ellipse(centerX + wobble, centerY + deskH * 0.5 + 60, deskW * 0.7, deskD * 0.5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Draw back legs first (behind desk)
+      ctx.fillStyle = colors.secondary;
+      ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+      ctx.lineWidth = 1;
+      
+      // Back left leg
+      const legWidth = t * 3;
+      const legDepth = deskD * 0.9;
+      
+      drawIsometricBox(ctx, 
+        isoX(-deskW/2 + legWidth/2 - offsetX, -legDepth/2 - offsetY),
+        isoY(deskH * 0.85, -deskW/2 + legWidth/2, -legDepth/2),
+        legWidth, deskH * 0.85, legDepth * 0.15,
+        colors.primary, colors.secondary
+      );
+      
+      // Back right leg
+      drawIsometricBox(ctx,
+        isoX(deskW/2 - legWidth/2 + offsetX, -legDepth/2 - offsetY),
+        isoY(deskH * 0.85, deskW/2 - legWidth/2, -legDepth/2),
+        legWidth, deskH * 0.85, legDepth * 0.15,
+        colors.primary, colors.secondary
+      );
+      
+      // Draw back panel/stretcher
+      drawIsometricBox(ctx,
+        isoX(0, -legDepth/2 - offsetY * 1.5),
+        isoY(deskH * 0.6, 0, -legDepth/2),
+        deskW - legWidth * 3, deskH * 0.25, t,
+        colors.primary, colors.secondary
+      );
+      
+      // Cable management tray
+      if (params.has_cable_management) {
+        ctx.fillStyle = '#111111';
+        drawIsometricBox(ctx,
+          isoX(0, -legDepth/2 + t),
+          isoY(deskH * 0.75 - offsetY * 2, 0, -legDepth/2),
+          deskW - legWidth * 4, t, legDepth * 0.2,
+          '#1A1A1A', '#111111'
+        );
+      }
+      
+      // Draw desktop (main surface)
+      const desktopGradient = ctx.createLinearGradient(
+        centerX - deskW/2, centerY - deskH,
+        centerX + deskW/2, centerY - deskH + deskD
+      );
+      desktopGradient.addColorStop(0, colors.primary);
+      desktopGradient.addColorStop(0.5, colors.secondary);
+      desktopGradient.addColorStop(1, colors.primary);
+      
+      drawIsometricBox(ctx,
+        isoX(0, 0),
+        isoY(deskH + offsetY * 2, 0, 0),
+        deskW, t * 2, deskD,
+        colors.primary, colors.secondary, desktopGradient
+      );
+      
+      // Front legs
+      drawIsometricBox(ctx,
+        isoX(-deskW/2 + legWidth/2 - offsetX, legDepth/2 + offsetY),
+        isoY(deskH * 0.85, -deskW/2 + legWidth/2, legDepth/2),
+        legWidth, deskH * 0.85, legDepth * 0.15,
+        colors.primary, colors.secondary
+      );
+      
+      drawIsometricBox(ctx,
+        isoX(deskW/2 - legWidth/2 + offsetX, legDepth/2 + offsetY),
+        isoY(deskH * 0.85, deskW/2 - legWidth/2, legDepth/2),
+        legWidth, deskH * 0.85, legDepth * 0.15,
+        colors.primary, colors.secondary
+      );
+      
+      // Front stretcher
+      drawIsometricBox(ctx,
+        isoX(0, legDepth/2 + offsetY * 1.5),
+        isoY(t * 3, 0, legDepth/2),
+        deskW - legWidth * 3, t * 2, t,
+        colors.primary, colors.secondary
+      );
+      
+      // RGB Channel (glow effect)
+      if (params.has_rgb_channels) {
+        ctx.shadowColor = colors.accent;
+        ctx.shadowBlur = 20;
+        ctx.fillStyle = colors.accent;
+        ctx.beginPath();
+        ctx.moveTo(isoX(-deskW/2 + 30, -legDepth/2), isoY(deskH + offsetY * 2 - t, -deskW/2 + 30, -legDepth/2));
+        ctx.lineTo(isoX(deskW/2 - 30, -legDepth/2), isoY(deskH + offsetY * 2 - t, deskW/2 - 30, -legDepth/2));
+        ctx.lineTo(isoX(deskW/2 - 30, -legDepth/2), isoY(deskH + offsetY * 2 - t + 4, deskW/2 - 30, -legDepth/2));
+        ctx.lineTo(isoX(-deskW/2 + 30, -legDepth/2), isoY(deskH + offsetY * 2 - t + 4, -deskW/2 + 30, -legDepth/2));
+        ctx.fill();
+        ctx.shadowBlur = 0;
+      }
+      
+      // Headset hook
+      if (params.has_headset_hook) {
+        const hookX = -deskW/2 - 15 - offsetX;
+        ctx.fillStyle = colors.accent;
+        ctx.shadowColor = colors.accent;
+        ctx.shadowBlur = 10;
+        drawIsometricBox(ctx,
+          isoX(hookX, 0),
+          isoY(deskH + offsetY * 3, hookX, 0),
+          12, 40, 8,
+          colors.accent, colors.highlight
+        );
+        drawIsometricBox(ctx,
+          isoX(hookX + 8, 0),
+          isoY(deskH + offsetY * 3 - 35, hookX + 8, 0),
+          20, 8, 8,
+          colors.accent, colors.highlight
+        );
+        ctx.shadowBlur = 0;
+      }
+      
+      // Mixer tray
+      if (params.has_mixer_tray) {
+        const mixerW = params.mixer_tray_width * scale * 0.4;
+        drawIsometricBox(ctx,
+          isoX(0, -legDepth/2 - 20 - offsetY * 3),
+          isoY(deskH + offsetY * 2 + 30, 0, -legDepth/2 - 20),
+          mixerW, t * 1.5, legDepth * 0.4,
+          colors.primary, colors.secondary
+        );
+        // Angled supports
+        ctx.fillStyle = colors.secondary;
+        ctx.beginPath();
+        ctx.moveTo(isoX(-mixerW/3, -legDepth/2), isoY(deskH + offsetY * 2, -mixerW/3, -legDepth/2));
+        ctx.lineTo(isoX(-mixerW/3, -legDepth/2 - 20), isoY(deskH + offsetY * 2 + 30, -mixerW/3, -legDepth/2 - 20));
+        ctx.lineTo(isoX(-mixerW/3 + 8, -legDepth/2 - 20), isoY(deskH + offsetY * 2 + 30, -mixerW/3 + 8, -legDepth/2 - 20));
+        ctx.fill();
+      }
+      
+      // GPU Tray
+      if (params.has_gpu_tray) {
+        drawIsometricBox(ctx,
+          isoX(deskW/4, legDepth/4 + offsetY),
+          isoY(deskH + offsetY * 2 - t * 3, deskW/4, legDepth/4),
+          60, t, 35,
+          '#1A1A1A', '#111111'
+        );
+      }
+      
+      // VESA Mount
+      if (params.has_vesa_mount) {
+        ctx.fillStyle = '#1A1A1A';
+        drawIsometricBox(ctx,
+          isoX(0, -legDepth/3 - offsetY * 5),
+          isoY(deskH + offsetY * 4 + 80, 0, -legDepth/3),
+          30, 80, 8,
+          '#1A1A1A', '#111111'
+        );
+        // Monitor placeholder
+        ctx.fillStyle = '#222222';
+        drawIsometricBox(ctx,
+          isoX(0, -legDepth/3 - offsetY * 5),
+          isoY(deskH + offsetY * 4 + 180, 0, -legDepth/3),
+          200, 120, 10,
+          '#2A2A2A', '#1A1A1A'
+        );
+        // Screen
+        ctx.fillStyle = '#3B3B3B';
+        const screenGlow = ctx.createLinearGradient(
+          centerX - 80, centerY - deskH - 100,
+          centerX + 80, centerY - deskH
+        );
+        screenGlow.addColorStop(0, '#4A4A4A');
+        screenGlow.addColorStop(0.5, '#3A3A3A');
+        screenGlow.addColorStop(1, '#2A2A2A');
+        ctx.fillStyle = screenGlow;
+        ctx.beginPath();
+        ctx.moveTo(isoX(-85, -legDepth/3 - offsetY * 5), isoY(deskH + offsetY * 4 + 175, -85, -legDepth/3));
+        ctx.lineTo(isoX(85, -legDepth/3 - offsetY * 5), isoY(deskH + offsetY * 4 + 175, 85, -legDepth/3));
+        ctx.lineTo(isoX(85, -legDepth/3 - offsetY * 5), isoY(deskH + offsetY * 4 + 70, 85, -legDepth/3));
+        ctx.lineTo(isoX(-85, -legDepth/3 - offsetY * 5), isoY(deskH + offsetY * 4 + 70, -85, -legDepth/3));
+        ctx.fill();
+      }
+      
+      // Increment rotation for animation
+      rotationRef.current += 1;
+      animationRef.current = requestAnimationFrame(draw);
+    };
     
-    // Scale factor
-    const scale = Math.min(width / (params.width * 1.5), height / (params.height * 1.5));
-    const centerX = width / 2;
-    const centerY = height / 2;
+    draw();
     
-    // Draw desk isometric view
-    const deskW = params.width * scale * 0.5;
-    const deskD = params.depth * scale * 0.3;
-    const deskH = params.height * scale * 0.5;
-    const t = params.material_thickness * scale * 0.1;
+    return () => {
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+      }
+    };
+  }, [params, exploded, colors]);
+
+  // Helper function to draw isometric box
+  function drawIsometricBox(ctx, x, y, w, h, d, colorTop, colorSide, customTop = null) {
+    const isoAngle = Math.PI / 6;
+    const cosA = Math.cos(isoAngle);
+    const sinA = Math.sin(isoAngle);
     
-    const offsetX = exploded ? 20 : 0;
-    const offsetY = exploded ? 15 : 0;
-    
-    // Draw shadow
-    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    // Top face
+    ctx.fillStyle = customTop || colorTop;
     ctx.beginPath();
-    ctx.ellipse(centerX, centerY + deskH/2 + 30, deskW/2, deskD/3, 0, 0, Math.PI * 2);
+    ctx.moveTo(x, y - h);
+    ctx.lineTo(x + w/2 * cosA, y - h - w/2 * sinA);
+    ctx.lineTo(x + w/2 * cosA - d/2 * cosA, y - h - w/2 * sinA - d/2 * sinA);
+    ctx.lineTo(x - d/2 * cosA, y - h - d/2 * sinA);
+    ctx.closePath();
     ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+    ctx.stroke();
     
-    // Draw legs (back)
-    ctx.fillStyle = baseColor;
-    ctx.strokeStyle = '#000000';
-    ctx.lineWidth = 1;
-    
-    // Back left leg
-    ctx.fillRect(centerX - deskW/2 + 10 - offsetX, centerY - deskH/2 + deskD/2 - offsetY, t * 3, deskH - 20);
-    ctx.strokeRect(centerX - deskW/2 + 10 - offsetX, centerY - deskH/2 + deskD/2 - offsetY, t * 3, deskH - 20);
-    
-    // Back right leg
-    ctx.fillRect(centerX + deskW/2 - 10 - t * 3 + offsetX, centerY - deskH/2 + deskD/2 - offsetY, t * 3, deskH - 20);
-    ctx.strokeRect(centerX + deskW/2 - 10 - t * 3 + offsetX, centerY - deskH/2 + deskD/2 - offsetY, t * 3, deskH - 20);
-    
-    // Draw desktop top surface
-    ctx.fillStyle = baseColor;
+    // Right face
+    ctx.fillStyle = colorSide;
     ctx.beginPath();
-    ctx.moveTo(centerX - deskW/2, centerY - deskH/2 + offsetY * 2);
-    ctx.lineTo(centerX + deskW/2, centerY - deskH/2 + offsetY * 2);
-    ctx.lineTo(centerX + deskW/2 + deskD/3, centerY - deskH/2 + deskD/2 + offsetY * 2);
-    ctx.lineTo(centerX - deskW/2 + deskD/3, centerY - deskH/2 + deskD/2 + offsetY * 2);
+    ctx.moveTo(x + w/2 * cosA, y - h - w/2 * sinA);
+    ctx.lineTo(x + w/2 * cosA, y - w/2 * sinA);
+    ctx.lineTo(x + w/2 * cosA - d/2 * cosA, y - w/2 * sinA - d/2 * sinA);
+    ctx.lineTo(x + w/2 * cosA - d/2 * cosA, y - h - w/2 * sinA - d/2 * sinA);
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
     
-    // Draw desktop front edge
-    ctx.fillStyle = params.desk_type === 'gaming' ? '#1A1A1A' : '#8B6914';
+    // Left face  
+    const darkerSide = adjustBrightness(colorSide, -30);
+    ctx.fillStyle = darkerSide;
     ctx.beginPath();
-    ctx.moveTo(centerX - deskW/2, centerY - deskH/2 + offsetY * 2);
-    ctx.lineTo(centerX + deskW/2, centerY - deskH/2 + offsetY * 2);
-    ctx.lineTo(centerX + deskW/2, centerY - deskH/2 + t * 2 + offsetY * 2);
-    ctx.lineTo(centerX - deskW/2, centerY - deskH/2 + t * 2 + offsetY * 2);
+    ctx.moveTo(x, y - h);
+    ctx.lineTo(x, y);
+    ctx.lineTo(x - d/2 * cosA, y - d/2 * sinA);
+    ctx.lineTo(x - d/2 * cosA, y - h - d/2 * sinA);
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
-    
-    // Draw RGB channel if enabled
-    if (params.has_rgb_channels) {
-      ctx.fillStyle = '#FF3B30';
-      ctx.shadowColor = '#FF3B30';
-      ctx.shadowBlur = 15;
-      ctx.fillRect(centerX - deskW/2 + 20, centerY - deskH/2 + deskD/2 - 5 + offsetY * 2, deskW - 40, 4);
-      ctx.shadowBlur = 0;
-    }
-    
-    // Draw headset hook if enabled
-    if (params.has_headset_hook) {
-      ctx.fillStyle = accentColor;
-      ctx.fillRect(centerX - deskW/2 - 15 - offsetX, centerY - deskH/2 - 10 + offsetY * 2, 12, 30);
-      ctx.fillRect(centerX - deskW/2 - 15 - offsetX, centerY - deskH/2 + 20 + offsetY * 2, 20, 8);
-    }
-    
-    // Draw mixer tray if enabled
-    if (params.has_mixer_tray) {
-      const mixerW = params.mixer_tray_width * scale * 0.3;
-      ctx.fillStyle = baseColor;
-      ctx.strokeStyle = '#000000';
-      ctx.fillRect(centerX - mixerW/2, centerY - deskH/2 - 30 + offsetY * 3, mixerW, 25);
-      ctx.strokeRect(centerX - mixerW/2, centerY - deskH/2 - 30 + offsetY * 3, mixerW, 25);
-    }
-    
-    // Draw GPU tray if enabled
-    if (params.has_gpu_tray) {
-      ctx.fillStyle = '#1A1A1A';
-      ctx.fillRect(centerX + deskW/4, centerY - deskH/2 + 15 + offsetY * 2, 60, 35);
-      ctx.strokeRect(centerX + deskW/4, centerY - deskH/2 + 15 + offsetY * 2, 60, 35);
-    }
-    
-    // Draw VESA mount if enabled
-    if (params.has_vesa_mount) {
-      ctx.fillStyle = '#1A1A1A';
-      ctx.fillRect(centerX - 20, centerY - deskH/2 - 50 + offsetY * 4, 40, 40);
-      ctx.strokeRect(centerX - 20, centerY - deskH/2 - 50 + offsetY * 4, 40, 40);
-      // Monitor placeholder
-      ctx.fillStyle = '#333333';
-      ctx.fillRect(centerX - 80, centerY - deskH/2 - 120 + offsetY * 4, 160, 90);
-      ctx.strokeRect(centerX - 80, centerY - deskH/2 - 120 + offsetY * 4, 160, 90);
-    }
-    
-  }, [params, exploded, baseColor, accentColor]);
+  }
+
+  function adjustBrightness(hex, amount) {
+    const num = parseInt(hex.replace('#', ''), 16);
+    const r = Math.min(255, Math.max(0, (num >> 16) + amount));
+    const g = Math.min(255, Math.max(0, ((num >> 8) & 0x00FF) + amount));
+    const b = Math.min(255, Math.max(0, (num & 0x0000FF) + amount));
+    return '#' + (b | (g << 8) | (r << 16)).toString(16).padStart(6, '0');
+  }
+
+  // Feature icons
+  const activeFeatures = [];
+  if (params.has_rgb_channels) activeFeatures.push({ icon: Lamp, label: 'RGB' });
+  if (params.has_headset_hook) activeFeatures.push({ icon: Headphones, label: 'Hook' });
+  if (params.has_vesa_mount) activeFeatures.push({ icon: Monitor, label: 'VESA' });
+  if (params.has_mixer_tray) activeFeatures.push({ icon: MusicNote, label: 'Mixer' });
 
   return (
-    <div className={`relative w-full h-full min-h-[400px] canvas-container ${className}`}>
+    <div className={`relative w-full h-full min-h-[400px] ${className}`}>
       {/* Control buttons */}
       <div className="absolute top-4 right-4 z-10 flex gap-2">
         <motion.button
@@ -172,54 +370,90 @@ const DeskPreview3D = ({ params, className = '' }) => {
         </motion.button>
       </div>
 
+      {/* Type badge */}
+      <div className="absolute top-4 left-4 z-10">
+        <span className="px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider bg-[var(--primary)] text-white shadow-lg">
+          {params.desk_type} Desk
+        </span>
+      </div>
+
+      {/* Active features */}
+      {activeFeatures.length > 0 && (
+        <div className="absolute top-14 left-4 z-10 flex flex-col gap-2">
+          {activeFeatures.map((feature, idx) => (
+            <motion.div
+              key={idx}
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: idx * 0.1 }}
+              className="flex items-center gap-2 px-2 py-1 rounded-md bg-[var(--surface)]/80 backdrop-blur-sm text-xs"
+            >
+              <feature.icon size={14} className="text-[var(--primary)]" />
+              <span>{feature.label}</span>
+            </motion.div>
+          ))}
+        </div>
+      )}
+
+      {/* Dimension labels */}
+      {showDimensions && (
+        <motion.div 
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="absolute top-16 right-4 z-10 neu-surface rounded-lg p-3"
+        >
+          <div className="space-y-1 text-sm font-mono">
+            <div className="flex justify-between gap-4">
+              <span className="text-[var(--text-secondary)]">Width:</span>
+              <span className="font-bold">{params.width}mm</span>
+            </div>
+            <div className="flex justify-between gap-4">
+              <span className="text-[var(--text-secondary)]">Depth:</span>
+              <span className="font-bold">{params.depth}mm</span>
+            </div>
+            <div className="flex justify-between gap-4">
+              <span className="text-[var(--text-secondary)]">Height:</span>
+              <span className="font-bold">{params.height}mm</span>
+            </div>
+            <div className="flex justify-between gap-4 pt-1 border-t border-[var(--border)]">
+              <span className="text-[var(--text-secondary)]">Material:</span>
+              <span className="font-bold">{params.material_thickness}mm</span>
+            </div>
+          </div>
+        </motion.div>
+      )}
+
       {/* Stats overlay */}
       <div className="absolute bottom-4 left-4 z-10 glass-surface rounded-lg p-3">
         <div className="flex items-center gap-4 text-sm font-mono">
           <div>
             <span className="text-[var(--text-secondary)]">W:</span>
-            <span className="ml-1">{params.width}mm</span>
+            <span className="ml-1 font-bold">{params.width}</span>
           </div>
           <div>
             <span className="text-[var(--text-secondary)]">D:</span>
-            <span className="ml-1">{params.depth}mm</span>
+            <span className="ml-1 font-bold">{params.depth}</span>
           </div>
           <div>
             <span className="text-[var(--text-secondary)]">H:</span>
-            <span className="ml-1">{params.height}mm</span>
+            <span className="ml-1 font-bold">{params.height}</span>
           </div>
         </div>
       </div>
-
-      {/* Dimension labels */}
-      {showDimensions && (
-        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-10">
-          <div className="bg-black/80 text-white px-3 py-2 rounded text-sm font-mono whitespace-nowrap">
-            {params.width}mm × {params.depth}mm × {params.height}mm
-          </div>
-        </div>
-      )}
-
-      {/* Type badge */}
-      <div className="absolute top-4 left-4 z-10">
-        <span className="px-3 py-1 rounded-full text-xs font-medium bg-[var(--primary)] text-white capitalize">
-          {params.desk_type} Desk
-        </span>
-      </div>
-
-      {/* 2D Canvas Preview */}
-      <canvas 
-        ref={canvasRef}
-        width={800}
-        height={500}
-        className="w-full h-full object-contain"
-        style={{ background: '#1A1A1A' }}
-      />
       
       {/* 3D indicator */}
-      <div className="absolute bottom-4 right-4 z-10 glass-surface rounded-lg p-2 flex items-center gap-2">
+      <div className="absolute bottom-4 right-4 z-10 glass-surface rounded-lg px-3 py-2 flex items-center gap-2">
         <Cube size={16} className="text-[var(--primary)]" />
-        <span className="text-xs text-[var(--text-secondary)]">2D Preview</span>
+        <span className="text-xs font-medium">Isometric View</span>
       </div>
+
+      {/* Canvas */}
+      <canvas 
+        ref={canvasRef}
+        width={900}
+        height={600}
+        className="w-full h-full object-contain rounded-lg"
+      />
     </div>
   );
 };
