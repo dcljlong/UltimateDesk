@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Cube, Download, ArrowRight, Eye, FileCode, FilePdf, Info } from '@phosphor-icons/react';
+import { Cube, Download, ArrowRight, Eye, FileCode, FilePdf, Info, Star } from '@phosphor-icons/react';
 import { Button } from '../components/ui/button';
 import axios from 'axios';
 
@@ -20,17 +20,126 @@ const fileIconFor = (k) => {
   return Cube;
 };
 
+// Marketing-grade names mapped over backend presets (id must match preset id)
+const CURATED_META = {
+  office: {
+    title: 'Minimal Office',
+    tagline: 'Clean cable routing · VESA mount · 1600mm',
+    accent: '#059669',
+    bg: '#10231D',
+  },
+  gaming: {
+    title: 'Gaming Pro',
+    tagline: 'RGB channel · headset hook · 1800mm',
+    accent: '#FF3B30',
+    bg: '#2A1214',
+  },
+  studio: {
+    title: 'Studio Beast',
+    tagline: '610mm mixer tray · pedal tilt · 2000mm',
+    accent: '#6366F1',
+    bg: '#141726',
+  },
+};
+const CURATED_ORDER = ['office', 'gaming', 'studio'];
+
+// Tiny inline SVG desk illustration — scales with card color
+const DeskGlyph = ({ color = '#FF3B30' }) => (
+  <svg viewBox="0 0 120 70" className="w-full h-full" aria-hidden="true">
+    <rect x="6" y="20" width="108" height="8" rx="1" fill={color} opacity="0.9" />
+    <rect x="12" y="28" width="6" height="34" rx="1" fill={color} opacity="0.7" />
+    <rect x="102" y="28" width="6" height="34" rx="1" fill={color} opacity="0.7" />
+    <rect x="48" y="6" width="24" height="14" rx="1" fill="#ffffff" opacity="0.18" />
+    <rect x="56" y="20" width="8" height="3" fill="#ffffff" opacity="0.25" />
+    <line x1="0" y1="62" x2="120" y2="62" stroke={color} strokeOpacity="0.25" />
+  </svg>
+);
+
+function PresetCard({ preset, quote, onBuild }) {
+  const meta = CURATED_META[preset.id] || {
+    title: preset.name,
+    tagline: preset.description,
+    accent: '#FF3B30',
+    bg: '#1a1a1a',
+  };
+  return (
+    <motion.div
+      whileHover={{ y: -4 }}
+      transition={{ type: 'spring', stiffness: 260, damping: 22 }}
+      className="neu-surface rounded-xl overflow-hidden flex flex-col"
+      data-testid={`curated-card-${preset.id}`}
+    >
+      <div className="h-20 relative" style={{ background: meta.bg }}>
+        <DeskGlyph color={meta.accent} />
+      </div>
+      <div className="p-4 flex-1 flex flex-col">
+        <div className="flex items-center justify-between mb-1">
+          <span className="text-[10px] uppercase tracking-[0.18em] text-[var(--text-secondary)]">
+            {preset.id}
+          </span>
+          {quote && (
+            <span className="font-mono text-sm font-bold" data-testid={`curated-price-${preset.id}`}>
+              from ${Math.round(quote.total)}
+              <span className="ml-0.5 text-[10px] text-[var(--text-secondary)]">NZD</span>
+            </span>
+          )}
+        </div>
+        <h3 className="font-bold text-lg leading-tight" data-testid={`curated-title-${preset.id}`}>
+          {meta.title}
+        </h3>
+        <p className="text-xs text-[var(--text-secondary)] mt-1 flex-1">{meta.tagline}</p>
+        <Button
+          variant="outline"
+          className="w-full mt-3 justify-center"
+          onClick={() => onBuild(preset.id)}
+          data-testid={`curated-build-btn-${preset.id}`}
+        >
+          Build This <ArrowRight size={14} className="ml-1.5" />
+        </Button>
+      </div>
+    </motion.div>
+  );
+}
+
 export default function SharedQuote() {
   const { slug } = useParams();
   const navigate = useNavigate();
   const [doc, setDoc] = useState(null);
   const [error, setError] = useState(null);
+  const [curated, setCurated] = useState([]);
 
   useEffect(() => {
     axios.get(`${API}/pricing/shared/${slug}`)
       .then(({ data }) => setDoc(data))
       .catch(() => setError('Quote not found or link expired'));
   }, [slug]);
+
+  // Fetch the 3 curated presets + their live DXF prices in parallel
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data: presets } = await axios.get(`${API}/designs/presets`);
+        const ordered = CURATED_ORDER
+          .map((id) => presets.find((p) => p.id === id))
+          .filter(Boolean);
+        const quotes = await Promise.all(
+          ordered.map((p) =>
+            axios
+              .post(`${API}/pricing/quote`, { params: p.params, bundle: 'dxf' })
+              .then((r) => r.data)
+              .catch(() => null)
+          )
+        );
+        if (!cancelled) {
+          setCurated(ordered.map((p, i) => ({ preset: p, quote: quotes[i] })));
+        }
+      } catch {
+        /* panel hides on error */
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   if (error) {
     return (
@@ -137,6 +246,35 @@ export default function SharedQuote() {
         <p className="text-center text-xs text-[var(--text-secondary)] mt-6">
           Dimensions: {p.width}×{p.depth}×{p.height} mm · {q.sheets_required} sheet(s) · {q.part_count} parts
         </p>
+
+        {/* ------ Other Popular Designs ------ */}
+        {curated.length > 0 && (
+          <motion.section
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.15 }}
+            className="mt-12"
+            data-testid="curated-panel"
+          >
+            <div className="flex items-center gap-2 mb-1">
+              <Star size={18} weight="fill" className="text-[var(--primary)]" />
+              <h2 className="text-xl font-bold">Other Popular Designs</h2>
+            </div>
+            <p className="text-xs text-[var(--text-secondary)] mb-5">
+              No signup needed — just tap <strong>Build This</strong> and start designing.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {curated.map(({ preset, quote }) => (
+                <PresetCard
+                  key={preset.id}
+                  preset={preset}
+                  quote={quote}
+                  onBuild={(id) => navigate(`/designer?preset=${id}`)}
+                />
+              ))}
+            </div>
+          </motion.section>
+        )}
       </motion.div>
     </div>
   );
