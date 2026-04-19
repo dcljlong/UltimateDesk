@@ -1,7 +1,7 @@
 # UltimateDesk CNC Pro - Product Requirements Document
 
 ## Original Problem Statement
-AI-powered CNC desk designer for Kiwi DIY gamers/builders. Generate unlimited gaming/PC/studio/home desks from NZ 18mm plywood (2400x1200mm sheets). Features AI chat designer, 3D preview, CNC file generation with nesting optimization, and Stripe payments.
+AI-powered CNC desk designer for Kiwi DIY gamers/builders. Generate unlimited gaming/PC/studio/home desks from NZ 18mm plywood (2400x1200mm sheets). Features: AI chat designer, 2D/3D preview, CNC file generation with nesting optimization, transparent scale-based pricing, Stripe payments.
 
 ## User Personas
 1. **Gamer**: 49" ultrawide, RGB channels, headset arm
@@ -9,77 +9,85 @@ AI-powered CNC desk designer for Kiwi DIY gamers/builders. Generate unlimited ga
 3. **Office**: Cable management, VESA mount
 
 ## Architecture
-- **Frontend**: React 19 + Tailwind CSS + Shadcn/UI + Framer Motion
-- **Backend**: FastAPI + Motor (MongoDB async driver)
-- **Database**: MongoDB (local)
+- **Frontend**: React 19 + Tailwind + Shadcn/UI + Framer Motion
+- **Backend**: FastAPI + Motor (async MongoDB)
 - **AI**: Gemini 3 Flash via Emergent LLM Key
-- **Payments**: Stripe (test mode)
-- **Auth**: JWT with httpOnly cookies
+- **Payments**: Stripe (test mode) — dynamic pricing via pricing engine
+- **Auth**: JWT in httpOnly cookies
 
-## Core Requirements (Static)
-1. AI Chat Designer - Natural language to desk params
-2. Desk Preview - Visual representation
-3. CNC Generation - Nesting, G-code, material estimates
-4. User Auth - Register, login, JWT tokens
-5. Design Library - Save/load user designs
-6. Pro Subscription - $4.99 NZD/month via Stripe
+## Core Requirements
+1. AI Chat Designer — natural language → desk params
+2. Desk Preview — visual + dim display (watermarked for non-Pro)
+3. CNC Generation — nesting, G-code, DXF, SVG, PDF cut-sheet
+4. User Auth — register / login / JWT
+5. Design Library — save/load user designs
+6. **Scale-based pricing** — price scales with sheets × parts × joints × features × bundle
+7. **Copy protection** — watermark + rounded dims for free tier
 
-## What's Been Implemented (April 2026)
+## Pricing Model (Implemented Feb 2026)
+**Engine: `/app/backend/pricing.py` — pure, tested, reusable**
 
-### Phase 1 - MVP Complete ✅
-- [x] Landing page with presets (Gaming, Studio, Office)
-- [x] User authentication (register, login, logout, JWT)
-- [x] AI Chat Designer with Gemini 3 Flash integration
-- [x] 2D Desk Preview (canvas-based visualization)
-- [x] Configuration Panel (dimensions, features, style)
-- [x] CNC Generation engine (nesting algorithm, G-code preview)
-- [x] Sheet nesting visualization
-- [x] Material cost estimator
-- [x] Design save/load functionality
-- [x] Dark/Light theme toggle
-- [x] Stripe checkout integration (test mode)
-- [x] Pricing page
-- [x] Payment success page with polling
+- `base_fee` $10
+- `+ sheets_fee` $4 × sheets required
+- `+ parts_fee` $0.50 × (parts > 6)
+- `+ joint_fee` finger $0 / box $2 / dovetail $4
+- `+ features_fee` $2 per premium feature (RGB, mixer, hook, GPU, pedal, VESA, cable mgmt)
+- `× bundle_multiplier` dxf 1.0 / dxf_svg 1.15 / dxf_gcode 1.35 / full_pack 1.50
+- `+ commercial_license` +$19 flat
+
+Examples: Small office 1 sheet simple → **$14**; Medium gaming 2 sheets 3 feats full_pack → ~$37; Large studio 2 sheets premium full_pack + commercial → ~$64.
+
+## What's Been Implemented
+
+### Phase 1 — MVP (Apr 2026)
+- Landing, auth, chat designer, 2D isometric preview, nesting, G-code preview, save/load, Stripe skeleton.
+
+### Phase 2 — Pricing Refinement (Feb 2026) ✅
+- [x] **Pricing engine** (`/app/backend/pricing.py`) with 12 unit tests
+- [x] `GET /api/pricing/bundles` catalog endpoint
+- [x] `POST /api/pricing/quote` unauthenticated live-quote endpoint
+- [x] `POST /api/exports/purchase-single` uses server-computed price (accepts params + bundle + commercial_license)
+- [x] `POST /api/exports/generate` honours bundle (only generates requested files)
+- [x] SVG export generator added
+- [x] Webhook stores bundle + params_snapshot in export_credits
+- [x] Download endpoint returns 404 for files not in the paid bundle
+- [x] **ExportDialog** rewritten — bundle selector, commercial-license toggle, live-quote-card with line-item breakdown, checkout/generate dual mode
+- [x] **Live-price pill** in Designer header (updates on params change)
+- [x] **Copy protection** — diagonal email-watermark overlay on canvas for non-Pro, rounded dim display (`~1800mm`), right-click disabled
+- [x] **Pricing page** updated — replaced "$4.99 Single Export" with "Per-Design Export from $14"
+- [x] TZ bug fix on download expiry check
 
 ### Backend Endpoints
-- `/api/auth/*` - Authentication
-- `/api/designs/*` - Design CRUD
-- `/api/designs/presets` - Preset templates
-- `/api/chat/design` - AI chat
-- `/api/cnc/generate` - CNC file generation
-- `/api/cnc/material-estimate` - Quick estimate
-- `/api/payments/*` - Stripe integration
+- `/api/auth/*`
+- `/api/designs/*` + `/api/designs/presets`
+- `/api/chat/design`
+- `/api/cnc/generate`, `/api/cnc/material-estimate`
+- `/api/pricing/bundles`, `/api/pricing/quote`
+- `/api/exports/check-access`, `/api/exports/purchase-single`, `/api/exports/purchase-pro`, `/api/exports/generate`, `/api/exports/download/{id}/{type}`
+- `/api/payments/*`, `/api/webhook/stripe`
+
+## Testing
+- 12 pytest pricing engine tests (pass)
+- 11 integration API tests (pass)
+- 7+ frontend E2E UI flows (pass)
+- Test report: `/app/test_reports/iteration_2.json` — 100% pass both layers
 
 ## Prioritized Backlog
+### P1 — High
+- [ ] Industrial bin-packing nesting (<10 % waste target)
+- [ ] No-signup landing-page material cost estimator
+- [ ] Credit packs (e.g. 5-pack at 20 % off)
 
-### P0 - Critical
-- [x] Core functionality complete
-
-### P1 - High Priority
-- [ ] True 3D preview with Three.js (had compatibility issues)
-- [ ] DXF/SVG/PDF file export downloads
-- [ ] Full G-code file download for Pro users
-- [ ] AR GLB export for mobile
-
-### P2 - Medium Priority
-- [ ] Realtime collaboration
-- [ ] Design sharing/public gallery
+### P2 — Medium
+- [ ] True interactive Three.js 3D preview (prev had lib-compat issues)
+- [ ] Subscription plan via Stripe Billing (monthly Pro)
+- [ ] Design sharing / public gallery
 - [ ] PWA installable
-- [ ] Improved nesting algorithm (<5% waste target)
-- [ ] Finger/dovetail joint visualization
 
-### P3 - Nice to Have
-- [ ] 95% Lighthouse score optimization
-- [ ] Mobile-responsive 3D preview
+### P3 — Nice to have
+- [ ] Split `server.py` (now 1700 lines) into modules (exports, pricing, cnc routers)
+- [ ] Finger/dovetail joint visualization
 - [ ] Design version history
-- [ ] Export to PDF cutting sheets
 
 ## Test Credentials
-- Admin: admin@ultimatedesk.com / Admin123!
-- New users can register with any valid email
-
-## Next Action Items
-1. Implement proper 3D preview with compatible Three.js setup
-2. Add actual file download functionality for Pro users
-3. Improve nesting algorithm efficiency
-4. Add material cost breakdown by part
+See `/app/memory/test_credentials.md` (admin is Pro for testing unlimited exports).
