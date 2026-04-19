@@ -1665,10 +1665,12 @@ async def create_share_link(body: ShareQuoteRequest, request: Request):
     )
 
     slug = _build_share_slug()
-    origin = str(request.base_url).rstrip("/")
-    # Prefer request Origin header (user's actual frontend host) over the backend base URL
-    origin_header = request.headers.get("origin") or request.headers.get("referer", "").split("/")[:3]
-    frontend_origin = request.headers.get("origin") or origin
+    # Prefer FRONTEND_URL env if set; else Origin header (may be cluster-internal in k8s)
+    frontend_origin = (
+        os.environ.get("FRONTEND_PUBLIC_URL")
+        or request.headers.get("origin")
+        or str(request.base_url).rstrip("/")
+    )
 
     await db.shared_quotes.insert_one({
         "slug": slug,

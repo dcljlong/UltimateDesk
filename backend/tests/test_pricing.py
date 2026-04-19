@@ -79,19 +79,6 @@ def test_more_sheets_increases_price():
     q2 = calculate_quote(params, sheets_required=2, part_count=9, bundle="dxf")
     q3 = calculate_quote(params, sheets_required=3, part_count=9, bundle="dxf")
     assert q1.total < q2.total < q3.total
-    params = _gaming_medium()
-    q_dxf = calculate_quote(params, sheets_required=1, part_count=9, bundle="dxf")
-    q_full = calculate_quote(params, sheets_required=1, part_count=9, bundle="full_pack")
-    assert q_full.total > q_dxf.total
-    assert q_full.bundle_multiplier > q_dxf.bundle_multiplier
-
-
-def test_more_sheets_increases_price():
-    params = _gaming_medium()
-    q1 = calculate_quote(params, sheets_required=1, part_count=9, bundle="dxf")
-    q2 = calculate_quote(params, sheets_required=2, part_count=9, bundle="dxf")
-    q3 = calculate_quote(params, sheets_required=3, part_count=9, bundle="dxf")
-    assert q1.total < q2.total < q3.total
 
 
 def test_medium_desk_range():

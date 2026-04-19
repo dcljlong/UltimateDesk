@@ -171,9 +171,8 @@ const ExportDialog = ({ isOpen, onClose, params, designName }) => {
         commercial_license: commercial,
         design_name: designName,
       });
-      const fullUrl = data.share_url?.startsWith('http')
-        ? data.share_url
-        : `${window.location.origin}/quote/${data.slug}`;
+      // Always present the link on the public frontend host the user is actually on
+      const fullUrl = `${window.location.origin}/quote/${data.slug}`;
       const pdfUrl = `${window.location.origin}/api/pricing/shared/${data.slug}/pdf`;
       setShareLink({ url: fullUrl, pdf_url: pdfUrl, slug: data.slug });
     } catch (e) {

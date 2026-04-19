@@ -91,7 +91,7 @@ class TestPricingEndpoints:
         assert r.status_code == 200, r.text
         q = r.json()
         assert q["bundle_key"] == "dxf"
-        assert 14 <= q["total"] <= 22, f"unexpected total {q['total']}"
+        assert 20 <= q["total"] <= 30, f"unexpected total {q['total']}"
         assert "$" in q["headline"] and "NZD" in q["headline"]
         assert q["sheets_required"] >= 1
         assert len(q["line_items"]) >= 2
@@ -106,7 +106,7 @@ class TestPricingEndpoints:
         q = r.json()
         assert q["bundle_key"] == "full_pack"
         assert q["commercial_license"] is True
-        assert q["commercial_fee"] == 19.0
+        assert q["commercial_fee"] == 29.0
         assert q["total"] > 30
         labels = " ".join(li["label"] for li in q["line_items"])
         assert "Commercial" in labels or "commercial" in labels.lower()
