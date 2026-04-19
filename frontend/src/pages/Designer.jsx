@@ -28,6 +28,7 @@ import DeskPreview3D from '../components/DeskPreview3D';
 import ChatDesigner from '../components/ChatDesigner';
 import ConfigPanel from '../components/ConfigPanel';
 import NestingViewer from '../components/NestingViewer';
+import ExportDialog from '../components/ExportDialog';
 import axios from 'axios';
 
 const getApiUrl = () => {
@@ -74,6 +75,8 @@ const Designer = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [activePanel, setActivePanel] = useState('chat');
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [livePrice, setLivePrice] = useState(null);
 
   // Load preset if specified in URL
   useEffect(() => {
@@ -144,13 +147,21 @@ const Designer = () => {
   };
 
   const handleExport = () => {
-    if (!isPro) {
-      navigate('/pricing');
-      return;
-    }
-    // Pro export functionality would go here
-    alert('Export functionality coming soon!');
+    setExportDialogOpen(true);
   };
+
+  // Live price pill — refreshes when design changes
+  useEffect(() => {
+    const t = setTimeout(async () => {
+      try {
+        const { data } = await axios.post(`${API}/pricing/quote`, {
+          params, bundle: 'dxf', commercial_license: false,
+        });
+        setLivePrice(data);
+      } catch { /* silent */ }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [params]);
 
   return (
     <div className="h-screen flex flex-col bg-[var(--background)]">
@@ -204,16 +215,29 @@ const Designer = () => {
             </DialogContent>
           </Dialog>
 
-          {/* Export Button */}
-          <Button 
-            onClick={handleExport}
-            className={isPro ? 'btn-primary gap-2' : 'btn-secondary gap-2'}
-            data-testid="export-btn"
-          >
-            <Download size={18} />
-            <span className="hidden sm:inline">Export</span>
-            {!isPro && <Crown size={14} className="text-yellow-500" />}
-          </Button>
+          {/* Export Button with live price pill */}
+          <div className="flex items-center gap-2">
+            {livePrice && !isPro && (
+              <div
+                className="hidden md:flex items-center gap-1 px-2.5 py-1 rounded-full bg-[var(--primary)]/10 border border-[var(--primary)]/30 text-xs font-mono"
+                data-testid="live-price-pill"
+                title={livePrice.headline}
+              >
+                <span className="text-[var(--text-secondary)]">from</span>
+                <span className="font-bold text-[var(--primary)]">${livePrice.total}</span>
+                <span className="text-[var(--text-secondary)]">NZD</span>
+              </div>
+            )}
+            <Button
+              onClick={handleExport}
+              className={isPro ? 'btn-primary gap-2' : 'btn-secondary gap-2'}
+              data-testid="export-btn"
+            >
+              <Download size={18} />
+              <span className="hidden sm:inline">Export</span>
+              {!isPro && <Crown size={14} className="text-yellow-500" />}
+            </Button>
+          </div>
 
           {/* Theme Toggle */}
           <Button 
@@ -396,6 +420,13 @@ const Designer = () => {
           </Tabs>
         </main>
       </div>
+
+      <ExportDialog
+        isOpen={exportDialogOpen}
+        onClose={() => setExportDialogOpen(false)}
+        params={params}
+        designName={designName}
+      />
     </div>
   );
 };

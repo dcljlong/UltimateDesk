@@ -1,0 +1,74 @@
+{
+  "summary": "Validated new pricing engine + live quote + bundle-aware exports + copy-protection. Backend: 23/23 tests PASS (12 unit + 11 integration). Frontend: all 7 UI flows PASS across non-Pro and Pro paths. No blocking issues found.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_pricing.py",
+    "/app/backend/tests/test_pricing_api.py",
+    "/app/test_reports/pytest/pytest_results.xml",
+    "/app/test_reports/pytest/pricing_api_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "pricing.py is clean, pure (no I/O), fully unit-tested, single source of truth for constants. Good separation of concerns.",
+    "purchase-single correctly ignores any client-supplied amount and re-prices on the server via calculate_quote() using DesignParams + simple_nesting — verified via integration test.",
+    "exports/generate honours bundle (full_pack returns dxf+svg+gcode+pdf, dxf returns only dxf) and download endpoint returns 404 for excluded file types — both verified.",
+    "DeskPreview3D applies diagonal watermark with email-based text for non-Pro users only — visually confirmed via screenshots (non-Pro shows watermark, Pro admin clean).",
+    "server.py is 1700+ lines — nearing the 700-line split threshold from code-review guidelines; consider splitting exports_router and pricing_router into their own modules for maintainability (non-blocking).",
+    "Webhook error path returns {received: true, error: ...} with 200 — Stripe prefers non-200 for failure so it retries; consider propagating non-2xx (non-blocking, works for test mode).",
+    "check-access returns has_access:false with 200 (not 401) when unauthenticated — this is intentional UX and matches the spec."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_pricing_api.py (new integration test file)"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": {
+    "admin": {"email": "admin@ultimatedesk.com", "password": "Admin123!"},
+    "fresh_user_pattern": "TEST_<uuid>@example.com / Passw0rd!"
+  },
+  "seed_data_creation": "Multiple TEST_*@example.com users registered during testing. payment_transactions docs created by purchase-single test. exports docs created by Pro generate tests.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Pricing engine is solid and fully covered by tests. Auth is cookie-based — use requests.Session() and login/register to get a session, do NOT look for access_token in login JSON. All 4 bundle keys are: dxf, dxf_svg, dxf_gcode, full_pack. Live quote endpoint /api/pricing/quote is intentionally unauthenticated. Watermark email text is set via user.email (falls back to 'UltimateDesk — preview only').",
+  "features_tested": {
+    "GET /api/pricing/bundles": "PASS - returns 4 bundles (dxf, dxf_svg, dxf_gcode, full_pack) with multipliers, files, and pricing constants",
+    "POST /api/pricing/quote (small office dxf)": "PASS - total $14-22, headline contains size+desk+sheet+$ NZD",
+    "POST /api/pricing/quote (large studio full_pack+commercial)": "PASS - commercial_fee $19, bundle upgrade line item, bundle_files=[dxf,svg,gcode,pdf]",
+    "POST /api/exports/check-access (unauth)": "PASS - has_access:false, reason:not_authenticated",
+    "POST /api/exports/check-access (admin Pro)": "PASS - has_access:true, plan:pro_unlimited",
+    "POST /api/exports/check-access (fresh user)": "PASS - has_access:false, reason:no_credits",
+    "POST /api/exports/purchase-single (no auth)": "PASS - 401/403",
+    "POST /api/exports/purchase-single (fresh user, full_pack, commercial)": "PASS - returns stripe.com URL, session_id, server-computed amount > $30",
+    "POST /api/exports/generate full_pack (admin)": "PASS - returns files dict with dxf+svg+gcode+pdf keys",
+    "POST /api/exports/generate dxf only (admin)": "PASS - returns only dxf key",
+    "GET /api/exports/download/{id}/{type} included": "PASS - 200 for dxf/svg/gcode/pdf when in bundle",
+    "GET /api/exports/download/{id}/svg for dxf-only bundle": "PASS - 404",
+    "pytest test_pricing.py": "PASS - 12/12 unit tests",
+    "Pricing page UI": "PASS - 'Per-Design Export' card shows 'from $14 NZD', CTA 'Design & See My Price', no $4.99 anywhere",
+    "Designer live-price-pill (non-Pro)": "PASS - shows 'from $20 NZD' in header, updates on param change",
+    "Designer live-price-pill (Pro admin)": "PASS - hidden for Pro users",
+    "ExportDialog bundle-selector": "PASS - 4 options rendered with data-testid bundle-opt-{key}",
+    "ExportDialog live-quote-card": "PASS - line items + total render, headline shown",
+    "ExportDialog bundle switch dxf->full_pack": "PASS - total increased from $20 to $30",
+    "ExportDialog commercial-license toggle": "PASS - total $30 -> $49 (+$19)",
+    "ExportDialog non-Pro shows checkout-btn": "PASS - label 'Pay $49 NZD and download', no generate-export-btn",
+    "ExportDialog Pro shows generate-export-btn": "PASS - label 'Generate files (Pro, included)', no checkout-btn",
+    "ExportDialog Pro generate -> download buttons": "PASS - download-dxf/svg/gcode/pdf-btn all present after generation",
+    "DeskPreview3D watermark non-Pro": "PASS - diagonal email-based watermark painted across canvas (verified via screenshot)",
+    "DeskPreview3D no watermark for Pro": "PASS - clean preview for admin (verified via screenshot)"
+  },
+  "screenshots_captured": [
+    "pricing_page.png — Per-Design Export card with 'from $14'",
+    "designer_nonpro.png — watermark visible across 3D canvas (email-based)",
+    "designer_pro.png — no watermark, clean preview",
+    "export_dialog_nonpro.png — bundle selector, live quote $49 with commercial license, checkout-btn",
+    "export_dialog_pro_success.png — 4 file downloads rendered after generation"
+  ]
+}

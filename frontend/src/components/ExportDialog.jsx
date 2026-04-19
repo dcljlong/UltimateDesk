@@ -1,19 +1,21 @@
-import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  Download, 
-  X, 
-  Crown, 
-  FileCode, 
-  Cube, 
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { motion } from 'framer-motion';
+import {
+  Download,
+  Crown,
+  FileCode,
+  Cube,
   FilePdf,
   Warning,
   Check,
   Spinner,
-  ArrowRight
+  ArrowRight,
+  Lock,
+  CheckCircle,
+  Info,
 } from '@phosphor-icons/react';
 import { Button } from './ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
@@ -27,49 +29,114 @@ const getApiUrl = () => {
 };
 const API = getApiUrl();
 
+const FILE_META = {
+  dxf:   { Icon: FileCode, label: 'DXF',    color: 'text-blue-500',  hint: 'CAD/CAM geometry' },
+  svg:   { Icon: FileCode, label: 'SVG',    color: 'text-purple-500',hint: 'Vector cut layout' },
+  gcode: { Icon: Cube,     label: 'G-Code', color: 'text-green-500', hint: 'CNC instructions' },
+  pdf:   { Icon: FilePdf,  label: 'PDF',    color: 'text-red-500',   hint: 'Cut-sheet reference' },
+};
+
 const ExportDialog = ({ isOpen, onClose, params, designName }) => {
   const { isAuthenticated, isPro } = useAuth();
   const navigate = useNavigate();
-  
+
+  const [bundle, setBundle] = useState('dxf');
+  const [commercial, setCommercial] = useState(false);
+  const [catalog, setCatalog] = useState(null);
+  const [quote, setQuote] = useState(null);
+  const [quoteLoading, setQuoteLoading] = useState(false);
+
   const [accessStatus, setAccessStatus] = useState(null);
   const [isChecking, setIsChecking] = useState(false);
+  const [isCheckingOut, setIsCheckingOut] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [exportResult, setExportResult] = useState(null);
   const [error, setError] = useState(null);
 
+  // Load bundle catalog once
+  useEffect(() => {
+    if (!isOpen) return;
+    axios.get(`${API}/pricing/bundles`).then(({ data }) => setCatalog(data)).catch(() => {});
+  }, [isOpen]);
+
+  // Check export access when dialog opens
   useEffect(() => {
     if (isOpen && isAuthenticated) {
       checkAccess();
     }
   }, [isOpen, isAuthenticated]);
 
+  // Live quote — debounced on params / bundle / commercial change
+  useEffect(() => {
+    if (!isOpen) return;
+    const handle = setTimeout(async () => {
+      setQuoteLoading(true);
+      try {
+        const { data } = await axios.post(`${API}/pricing/quote`, {
+          params,
+          bundle,
+          commercial_license: commercial,
+        });
+        setQuote(data);
+      } catch (e) {
+        console.error('Quote error:', e);
+      } finally {
+        setQuoteLoading(false);
+      }
+    }, 200);
+    return () => clearTimeout(handle);
+  }, [isOpen, params, bundle, commercial]);
+
   const checkAccess = async () => {
     setIsChecking(true);
     try {
       const { data } = await axios.post(`${API}/exports/check-access`, {}, { withCredentials: true });
       setAccessStatus(data);
-    } catch (error) {
-      console.error('Access check error:', error);
+    } catch {
       setAccessStatus({ has_access: false, reason: 'error' });
     } finally {
       setIsChecking(false);
     }
   };
 
+  const latestCreditBundle = accessStatus?.latest_credit?.bundle;
+  const canUseExistingCredit = isPro || latestCreditBundle === bundle;
+
+  const handleCheckout = async () => {
+    setIsCheckingOut(true);
+    setError(null);
+    try {
+      const { data } = await axios.post(
+        `${API}/exports/purchase-single`,
+        {
+          origin_url: window.location.origin,
+          params,
+          bundle,
+          commercial_license: commercial,
+          design_name: designName,
+        },
+        { withCredentials: true }
+      );
+      if (data?.url) window.location.href = data.url;
+    } catch (e) {
+      setError(e.response?.data?.detail || 'Failed to start checkout');
+      setIsCheckingOut(false);
+    }
+  };
+
   const handleGenerateExport = async () => {
     setIsGenerating(true);
     setError(null);
-    
     try {
       const { data } = await axios.post(
         `${API}/exports/generate`,
-        { params, design_name: designName },
+        { params, design_name: designName, bundle },
         { withCredentials: true }
       );
       setExportResult(data);
-    } catch (error) {
-      console.error('Export error:', error);
-      setError(error.response?.data?.detail || 'Failed to generate export files');
+      checkAccess(); // refresh credit count
+    } catch (e) {
+      setError(e.response?.data?.detail || 'Failed to generate export files');
     } finally {
       setIsGenerating(false);
     }
@@ -77,7 +144,7 @@ const ExportDialog = ({ isOpen, onClose, params, designName }) => {
 
   const handleDownload = (fileType) => {
     if (exportResult?.files?.[fileType]) {
-      window.open(`${API}${exportResult.files[fileType]}`, '_blank');
+      window.open(`${window.location.origin}${exportResult.files[fileType]}`, '_blank');
     }
   };
 
@@ -87,23 +154,26 @@ const ExportDialog = ({ isOpen, onClose, params, designName }) => {
     onClose();
   };
 
-  // Not authenticated
+  const bundles = catalog?.bundles || [];
+  const includedFiles = useMemo(() => {
+    const b = bundles.find(x => x.key === bundle);
+    return b?.files || ['dxf'];
+  }, [bundles, bundle]);
+
+  // ---- Unauthenticated state ----
   if (!isAuthenticated) {
     return (
       <Dialog open={isOpen} onOpenChange={handleClose}>
-        <DialogContent className="neu-surface max-w-md">
+        <DialogContent className="neu-surface max-w-md" data-testid="export-dialog">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Download size={24} className="text-[var(--primary)]" />
               Export CNC Files
             </DialogTitle>
+            <DialogDescription>Sign in to export production-ready CNC files.</DialogDescription>
           </DialogHeader>
-          
-          <div className="py-6 text-center">
-            <p className="text-[var(--text-secondary)] mb-6">
-              Sign in to export your desk designs as production-ready CNC files.
-            </p>
-            <Button 
+          <div className="py-4 text-center">
+            <Button
               onClick={() => navigate('/auth', { state: { from: { pathname: '/designer' } } })}
               className="btn-primary"
               data-testid="export-signin-btn"
@@ -118,219 +188,222 @@ const ExportDialog = ({ isOpen, onClose, params, designName }) => {
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="neu-surface max-w-lg">
+      <DialogContent className="neu-surface max-w-2xl max-h-[90vh] overflow-auto" data-testid="export-dialog">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Download size={24} className="text-[var(--primary)]" />
             Export CNC Files
           </DialogTitle>
+          <DialogDescription>
+            Pick a bundle. Your price scales with sheet count, parts, and features — no surprises.
+          </DialogDescription>
         </DialogHeader>
 
-        {/* Checking access */}
-        {isChecking && (
-          <div className="py-8 text-center">
-            <motion.div
-              animate={{ rotate: 360 }}
-              transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
-              className="inline-block"
-            >
-              <Spinner size={32} className="text-[var(--primary)]" />
-            </motion.div>
-            <p className="mt-4 text-[var(--text-secondary)]">Checking access...</p>
-          </div>
-        )}
-
-        {/* Export result */}
-        {exportResult && !isChecking && (
-          <div className="py-4">
-            <div className="flex items-center gap-2 text-[var(--success)] mb-4">
-              <Check size={24} weight="bold" />
-              <span className="font-bold">Files Generated Successfully!</span>
+        {/* ---- Success: files generated ---- */}
+        {exportResult && (
+          <div className="py-4" data-testid="export-success-section">
+            <div className="flex items-center gap-2 text-green-500 mb-4">
+              <CheckCircle size={24} weight="fill" />
+              <span className="font-bold">Files generated — ready to download</span>
             </div>
-            
-            {/* Download buttons */}
-            <div className="space-y-3 mb-6">
-              <button
-                onClick={() => handleDownload('dxf')}
-                className="w-full flex items-center justify-between p-4 neu-surface rounded-lg hover:bg-[var(--surface-elevated)] transition-all"
-                data-testid="download-dxf-btn"
-              >
-                <div className="flex items-center gap-3">
-                  <FileCode size={24} className="text-blue-500" />
-                  <div className="text-left">
-                    <p className="font-bold">DXF File</p>
-                    <p className="text-xs text-[var(--text-secondary)]">CAD/CAM ready geometry</p>
-                  </div>
-                </div>
-                <Download size={20} />
-              </button>
-
-              <button
-                onClick={() => handleDownload('gcode')}
-                className="w-full flex items-center justify-between p-4 neu-surface rounded-lg hover:bg-[var(--surface-elevated)] transition-all"
-                data-testid="download-gcode-btn"
-              >
-                <div className="flex items-center gap-3">
-                  <Cube size={24} className="text-green-500" />
-                  <div className="text-left">
-                    <p className="font-bold">G-Code File</p>
-                    <p className="text-xs text-[var(--text-secondary)]">CNC machine instructions</p>
-                  </div>
-                </div>
-                <Download size={20} />
-              </button>
-
-              <button
-                onClick={() => handleDownload('pdf')}
-                className="w-full flex items-center justify-between p-4 neu-surface rounded-lg hover:bg-[var(--surface-elevated)] transition-all"
-                data-testid="download-pdf-btn"
-              >
-                <div className="flex items-center gap-3">
-                  <FilePdf size={24} className="text-red-500" />
-                  <div className="text-left">
-                    <p className="font-bold">Cutting Sheet (HTML)</p>
-                    <p className="text-xs text-[var(--text-secondary)]">Visual parts reference</p>
-                  </div>
-                </div>
-                <Download size={20} />
-              </button>
+            <div className="space-y-2 mb-4">
+              {Object.keys(exportResult.files || {}).map((ft) => {
+                const meta = FILE_META[ft] || { Icon: FileCode, label: ft, color: 'text-gray-500', hint: '' };
+                const Icon = meta.Icon;
+                return (
+                  <button
+                    key={ft}
+                    onClick={() => handleDownload(ft)}
+                    className="w-full flex items-center justify-between p-3 neu-surface rounded-lg hover:bg-[var(--surface-elevated)] transition-all"
+                    data-testid={`download-${ft}-btn`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <Icon size={22} className={meta.color} />
+                      <div className="text-left">
+                        <p className="font-bold">{meta.label}</p>
+                        <p className="text-xs text-[var(--text-secondary)]">{meta.hint}</p>
+                      </div>
+                    </div>
+                    <Download size={18} />
+                  </button>
+                );
+              })}
             </div>
-
-            {/* Disclaimer */}
-            <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-4">
+            <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3 text-sm">
               <div className="flex items-start gap-2">
-                <Warning size={20} className="text-yellow-500 mt-0.5 flex-shrink-0" />
-                <div className="text-sm">
-                  <p className="font-bold text-yellow-600 mb-1">Safety Reminder</p>
-                  <p className="text-[var(--text-secondary)]">
-                    {exportResult.disclaimer || 'Verify all toolpaths in your CAM software before cutting.'}
-                  </p>
-                </div>
+                <Warning size={18} className="text-yellow-500 mt-0.5 flex-shrink-0" />
+                <p className="text-[var(--text-secondary)]">{exportResult.disclaimer}</p>
               </div>
             </div>
           </div>
         )}
 
-        {/* Has access - show generate button */}
-        {accessStatus?.has_access && !exportResult && !isChecking && (
-          <div className="py-4">
-            <div className="mb-6">
-              <div className="flex items-center gap-2 mb-2">
-                {isPro ? (
-                  <span className="badge-pro flex items-center gap-1">
+        {/* ---- Main configurator ---- */}
+        {!exportResult && (
+          <div className="py-3 space-y-5">
+            {/* Bundle selector */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-sm font-bold">Export bundle</label>
+                {isPro && (
+                  <span className="badge-pro flex items-center gap-1 text-xs">
                     <Crown size={12} /> Pro Unlimited
-                  </span>
-                ) : (
-                  <span className="px-2 py-1 bg-blue-500/20 text-blue-400 rounded-full text-xs font-medium">
-                    {accessStatus.remaining} export{accessStatus.remaining !== 1 ? 's' : ''} remaining
                   </span>
                 )}
               </div>
-              <p className="text-sm text-[var(--text-secondary)]">
-                Generate production-ready files for <strong>{designName}</strong>
-              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2" data-testid="bundle-selector">
+                {bundles.map((b) => (
+                  <button
+                    key={b.key}
+                    onClick={() => setBundle(b.key)}
+                    data-testid={`bundle-opt-${b.key}`}
+                    className={`text-left p-3 rounded-lg border-2 transition-all ${
+                      bundle === b.key
+                        ? 'border-[var(--primary)] bg-[var(--primary)]/5'
+                        : 'border-[var(--border)] hover:border-[var(--primary)]/40'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-bold text-sm">{b.label}</span>
+                      {b.multiplier !== 1 && (
+                        <span className="text-xs text-[var(--text-secondary)]">×{b.multiplier}</span>
+                      )}
+                    </div>
+                    <div className="flex gap-1 flex-wrap">
+                      {b.files.map((f) => (
+                        <span key={f} className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 bg-[var(--surface-elevated)] rounded">
+                          {f}
+                        </span>
+                      ))}
+                    </div>
+                  </button>
+                ))}
+              </div>
             </div>
 
-            {/* File types preview */}
-            <div className="grid grid-cols-3 gap-3 mb-6">
-              <div className="text-center p-3 neu-surface rounded-lg">
-                <FileCode size={28} className="mx-auto text-blue-500 mb-1" />
-                <p className="text-xs font-medium">DXF</p>
+            {/* Commercial license toggle */}
+            <label className="flex items-start gap-3 p-3 rounded-lg neu-surface cursor-pointer" data-testid="commercial-license-toggle">
+              <input
+                type="checkbox"
+                checked={commercial}
+                onChange={(e) => setCommercial(e.target.checked)}
+                className="mt-1"
+                data-testid="commercial-license-input"
+              />
+              <div className="flex-1">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-sm">Commercial-use license</span>
+                  <span className="text-xs text-[var(--text-secondary)]">+$19 NZD</span>
+                </div>
+                <p className="text-xs text-[var(--text-secondary)] mt-0.5">
+                  Permits selling desks built from these files.
+                </p>
               </div>
-              <div className="text-center p-3 neu-surface rounded-lg">
-                <Cube size={28} className="mx-auto text-green-500 mb-1" />
-                <p className="text-xs font-medium">G-Code</p>
+            </label>
+
+            {/* Live quote breakdown */}
+            <div className="rounded-lg border-2 border-[var(--primary)]/30 p-4 bg-[var(--primary)]/5" data-testid="live-quote-card">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <Info size={18} className="text-[var(--primary)]" />
+                  <span className="font-bold">Your live quote</span>
+                </div>
+                {quoteLoading && (
+                  <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}>
+                    <Spinner size={16} className="text-[var(--primary)]" />
+                  </motion.div>
+                )}
               </div>
-              <div className="text-center p-3 neu-surface rounded-lg">
-                <FilePdf size={28} className="mx-auto text-red-500 mb-1" />
-                <p className="text-xs font-medium">PDF</p>
-              </div>
+
+              {quote ? (
+                <>
+                  <p className="text-sm text-[var(--text-secondary)] mb-3" data-testid="quote-headline">
+                    {quote.headline}
+                  </p>
+                  <ul className="space-y-1.5 mb-3 text-sm">
+                    {quote.line_items.map((li, idx) => (
+                      <li key={idx} className="flex items-start justify-between gap-3">
+                        <div className="flex-1">
+                          <span>{li.label}</span>
+                          {li.detail && (
+                            <span className="block text-xs text-[var(--text-secondary)]">{li.detail}</span>
+                          )}
+                        </div>
+                        <span className="font-mono tabular-nums">
+                          {li.amount >= 0 ? '+' : ''}${li.amount.toFixed(2)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="flex items-center justify-between pt-3 border-t border-[var(--border)]">
+                    <span className="font-bold">Total</span>
+                    <span className="text-2xl font-bold text-[var(--primary)]" data-testid="quote-total">
+                      ${quote.total} <span className="text-sm font-normal">NZD</span>
+                    </span>
+                  </div>
+                </>
+              ) : (
+                <p className="text-sm text-[var(--text-secondary)]">Calculating…</p>
+              )}
             </div>
+
+            {/* Action area */}
+            {isChecking ? (
+              <div className="text-center py-4 text-[var(--text-secondary)]">Checking access…</div>
+            ) : isPro ? (
+              <Button
+                onClick={handleGenerateExport}
+                disabled={isGenerating || !quote}
+                className="w-full btn-primary"
+                data-testid="generate-export-btn"
+              >
+                {isGenerating ? 'Generating files…' : (
+                  <><Crown size={16} className="mr-2" /> Generate files (Pro, included)</>
+                )}
+              </Button>
+            ) : canUseExistingCredit ? (
+              <Button
+                onClick={handleGenerateExport}
+                disabled={isGenerating || !quote}
+                className="w-full btn-primary"
+                data-testid="use-credit-btn"
+              >
+                {isGenerating ? 'Generating files…' : 'Use paid credit to generate files'}
+              </Button>
+            ) : (
+              <Button
+                onClick={handleCheckout}
+                disabled={isCheckingOut || !quote}
+                className="w-full btn-primary"
+                data-testid="checkout-btn"
+              >
+                {isCheckingOut ? (
+                  <>Redirecting to checkout…</>
+                ) : (
+                  <>
+                    <Lock size={16} className="mr-2" />
+                    {quote ? `Pay $${quote.total} NZD and download` : 'Continue to payment'}
+                    <ArrowRight size={16} className="ml-2" />
+                  </>
+                )}
+              </Button>
+            )}
+
+            {accessStatus?.remaining > 0 && !isPro && !canUseExistingCredit && (
+              <p className="text-xs text-center text-[var(--text-secondary)]" data-testid="credit-mismatch-note">
+                You have a paid credit for <strong>{latestCreditBundle}</strong>. Switch bundle above to use it.
+              </p>
+            )}
 
             {error && (
-              <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 mb-4">
-                <p className="text-sm text-red-400">{error}</p>
+              <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-sm text-red-400" data-testid="export-error">
+                {error}
               </div>
             )}
 
-            <Button
-              onClick={handleGenerateExport}
-              disabled={isGenerating}
-              className="w-full btn-primary"
-              data-testid="generate-export-btn"
-            >
-              {isGenerating ? (
-                <>
-                  <motion.div
-                    animate={{ rotate: 360 }}
-                    transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
-                    className="mr-2"
-                  >
-                    <Spinner size={18} />
-                  </motion.div>
-                  Generating Files...
-                </>
-              ) : (
-                <>
-                  <Download size={18} className="mr-2" />
-                  Generate Export Package
-                </>
-              )}
-            </Button>
-          </div>
-        )}
-
-        {/* No access - show purchase options */}
-        {accessStatus && !accessStatus.has_access && !isChecking && (
-          <div className="py-4">
-            <div className="text-center mb-6">
-              <Crown size={48} className="mx-auto text-[var(--primary)] mb-3" />
-              <h3 className="font-bold text-lg mb-2">Unlock Pro Exports</h3>
-              <p className="text-sm text-[var(--text-secondary)]">
-                Get production-ready DXF, G-Code, and PDF files for your designs.
-              </p>
-            </div>
-
-            <div className="space-y-3">
-              <button
-                onClick={() => navigate('/pricing')}
-                className="w-full flex items-center justify-between p-4 border-2 border-blue-500 rounded-lg hover:bg-blue-500/10 transition-all"
-                data-testid="buy-single-export-btn"
-              >
-                <div className="text-left">
-                  <p className="font-bold">Single Export</p>
-                  <p className="text-xs text-[var(--text-secondary)]">One-time purchase</p>
-                </div>
-                <div className="text-right">
-                  <p className="font-bold text-blue-500">$4.99 NZD</p>
-                </div>
-              </button>
-
-              <button
-                onClick={() => navigate('/pricing')}
-                className="w-full flex items-center justify-between p-4 border-2 border-[var(--primary)] rounded-lg hover:bg-[var(--primary)]/10 transition-all"
-                data-testid="buy-pro-btn"
-              >
-                <div className="text-left flex items-center gap-2">
-                  <Crown size={20} className="text-[var(--primary)]" />
-                  <div>
-                    <p className="font-bold">Pro Unlimited</p>
-                    <p className="text-xs text-[var(--text-secondary)]">Best value</p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p className="font-bold text-[var(--primary)]">$19/mo</p>
-                </div>
-              </button>
-            </div>
-
-            <Button
-              variant="outline"
-              className="w-full mt-4"
-              onClick={() => navigate('/pricing')}
-            >
-              View All Pricing Options <ArrowRight size={16} className="ml-2" />
-            </Button>
+            <p className="text-xs text-center text-[var(--text-secondary)]">
+              Includes: {includedFiles.map((f) => (FILE_META[f]?.label || f)).join(' + ')} · Files expire 24h after generation · Test-mode payments
+            </p>
           </div>
         )}
       </DialogContent>

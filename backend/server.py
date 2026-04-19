@@ -21,6 +21,14 @@ import math
 from emergentintegrations.llm.chat import LlmChat, UserMessage
 from emergentintegrations.payments.stripe.checkout import StripeCheckout, CheckoutSessionRequest, CheckoutSessionResponse, CheckoutStatusResponse
 
+# Pricing engine
+from pricing import (
+    calculate_quote,
+    get_bundle_catalog,
+    BUNDLE_OPTIONS,
+    QuoteBreakdown,
+)
+
 ROOT_DIR = Path(__file__).parent
 
 # MongoDB connection
@@ -44,6 +52,7 @@ designs_router = APIRouter(prefix="/designs", tags=["Designs"])
 chat_router = APIRouter(prefix="/chat", tags=["AI Chat"])
 cnc_router = APIRouter(prefix="/cnc", tags=["CNC Generator"])
 payments_router = APIRouter(prefix="/payments", tags=["Payments"])
+pricing_router = APIRouter(prefix="/pricing", tags=["Pricing"])
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -856,7 +865,7 @@ PRO_MONTHLY_PRICE = 19.00
 class ExportRequest(BaseModel):
     params: DesignParams
     design_name: str = "UltimateDesk Design"
-    export_type: str = "single"  # "single" or "subscription"
+    bundle: str = "dxf"  # dxf | dxf_svg | dxf_gcode | full_pack
 
 class ExportResponse(BaseModel):
     success: bool
@@ -1041,6 +1050,28 @@ def generate_dxf(parts: List[Dict], config: CNCConfig, design_name: str) -> str:
     
     return "\n".join(dxf_lines)
 
+def generate_svg(parts: List[Dict], config: CNCConfig, design_name: str) -> str:
+    """Generate SVG cutting layout (one path per part, millimeter units)."""
+    sw, sh = config.sheet_width, config.sheet_height
+    lines = [
+        f'<?xml version="1.0" encoding="UTF-8"?>',
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {sw} {sh}" width="{sw}mm" height="{sh}mm">',
+        f'  <title>{design_name} — UltimateDesk CNC Pro</title>',
+        f'  <desc>18mm plywood cutting layout. Verify in CAM software before cutting.</desc>',
+        f'  <rect x="0" y="0" width="{sw}" height="{sh}" fill="none" stroke="#888" stroke-width="1"/>',
+    ]
+    for i, p in enumerate(parts):
+        x, y, w, h = p.get("x", 0), p.get("y", 0), p["width"], p["height"]
+        lines.append(
+            f'  <g id="part-{i+1}" data-name="{p["name"]}">'
+            f'<rect x="{x}" y="{y}" width="{w}" height="{h}" fill="none" stroke="#000" stroke-width="2"/>'
+            f'<text x="{x + w/2}" y="{y + h/2}" font-size="20" text-anchor="middle" fill="#333">{p["name"]}</text>'
+            f'</g>'
+        )
+    lines.append('</svg>')
+    return "\n".join(lines)
+
+
 def generate_pdf_html(parts: List[Dict], nesting: NestingResult, params: DesignParams, design_name: str) -> str:
     """Generate HTML that can be converted to PDF cutting sheet"""
     sheet_w, sheet_h = 2400, 1200
@@ -1197,89 +1228,131 @@ exports_router = APIRouter(prefix="/exports", tags=["Pro Exports"])
 
 @exports_router.post("/check-access")
 async def check_export_access(request: Request):
-    """Check if user has Pro access for exports"""
+    """Check if user has Pro access or unused export credits."""
     user = await get_optional_user(request)
-    
+
     if not user:
         return {
             "has_access": False,
             "reason": "not_authenticated",
-            "message": "Please sign in to export files"
+            "message": "Please sign in to export files",
         }
-    
+
     if user.get("is_pro"):
         return {
             "has_access": True,
             "plan": "pro_unlimited",
-            "message": "You have unlimited Pro exports"
+            "message": "You have unlimited Pro exports",
         }
-    
-    # Check for single export credits
-    credits = await db.export_credits.find_one({"user_id": user["id"]})
-    if credits and credits.get("remaining", 0) > 0:
+
+    # Count unused single-export credits
+    unused = await db.export_credits.count_documents({"user_id": user["id"], "used": False})
+    if unused > 0:
+        latest = await db.export_credits.find_one(
+            {"user_id": user["id"], "used": False},
+            sort=[("created_at", -1)],
+            projection={"_id": 0, "bundle": 1, "commercial_license": 1, "design_name": 1},
+        )
         return {
             "has_access": True,
             "plan": "single_export",
-            "remaining": credits["remaining"],
-            "message": f"You have {credits['remaining']} export(s) remaining"
+            "remaining": unused,
+            "latest_credit": latest,
+            "message": f"You have {unused} paid export(s) available",
         }
-    
+
     return {
         "has_access": False,
         "reason": "no_credits",
-        "message": "Purchase Pro or single export to download files"
+        "message": "Purchase a single export or Pro to download files",
     }
 
 @exports_router.post("/purchase-single")
 async def purchase_single_export(request: Request):
-    """Create checkout for single export ($4.99)"""
+    """Create a Stripe checkout for a single export.
+    Body: { origin_url, params, bundle, commercial_license, design_name }
+    Price is computed server-side from the pricing engine — NEVER trust client price.
+    """
     body = await request.json()
     origin_url = body.get("origin_url", "")
-    
     if not origin_url:
         raise HTTPException(status_code=400, detail="Origin URL required")
-    
+
+    raw_params = body.get("params") or {}
+    try:
+        design_params = DesignParams(**raw_params)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid design params: {e}")
+
+    bundle = body.get("bundle", "dxf")
+    commercial_license = bool(body.get("commercial_license", False))
+    design_name = body.get("design_name", "UltimateDesk Design")
+
     user = await get_current_user(request)
-    
+
+    # Compute authoritative quote on the server
+    parts = calculate_desk_parts(design_params)
+    nesting = simple_nesting(parts, 2400, 1200)
+    total_part_qty = sum(p.get("quantity", 1) for p in parts)
+    quote = calculate_quote(
+        design_params.model_dump(),
+        sheets_required=nesting.sheets_required,
+        part_count=total_part_qty,
+        bundle=bundle,
+        commercial_license=commercial_license,
+    )
+
     api_key = os.environ.get("STRIPE_API_KEY")
     if not api_key:
         raise HTTPException(status_code=500, detail="Stripe not configured")
-    
+
     host_url = str(request.base_url).rstrip("/")
     webhook_url = f"{host_url}/api/webhook/stripe"
-    
     stripe_checkout = StripeCheckout(api_key=api_key, webhook_url=webhook_url)
-    
+
     success_url = f"{origin_url}/export/success?session_id={{CHECKOUT_SESSION_ID}}&type=single"
     cancel_url = f"{origin_url}/designer"
-    
+
     checkout_request = CheckoutSessionRequest(
-        amount=SINGLE_EXPORT_PRICE,
+        amount=float(quote.total),
         currency="nzd",
         success_url=success_url,
         cancel_url=cancel_url,
         metadata={
             "user_id": user["id"],
             "user_email": user["email"],
-            "product": "single_export"
-        }
+            "product": "single_export",
+            "bundle": quote.bundle_key,
+            "commercial_license": "1" if commercial_license else "0",
+            "design_name": design_name[:80],
+        },
     )
-    
     session = await stripe_checkout.create_checkout_session(checkout_request)
-    
+
     await db.payment_transactions.insert_one({
         "session_id": session.session_id,
         "user_id": user["id"],
         "user_email": user["email"],
-        "amount": SINGLE_EXPORT_PRICE,
+        "amount": float(quote.total),
         "currency": "nzd",
         "product": "single_export",
+        "bundle": quote.bundle_key,
+        "commercial_license": commercial_license,
+        "design_name": design_name,
+        "params_snapshot": design_params.model_dump(),
+        "quote_breakdown": quote.model_dump(),
         "status": "pending",
         "payment_status": "initiated",
-        "created_at": datetime.now(timezone.utc)
+        "created_at": datetime.now(timezone.utc),
     })
-    
-    return {"url": session.url, "session_id": session.session_id}
+
+    return {
+        "url": session.url,
+        "session_id": session.session_id,
+        "amount": quote.total,
+        "bundle": quote.bundle_key,
+        "headline": quote.headline,
+    }
 
 @exports_router.post("/purchase-pro")
 async def purchase_pro_subscription(request: Request):
@@ -1334,63 +1407,80 @@ async def purchase_pro_subscription(request: Request):
 
 @exports_router.post("/generate")
 async def generate_export_files(export_req: ExportRequest, request: Request):
-    """Generate and return export files (DXF, G-code, PDF) - requires Pro or credits"""
+    """Generate and return export files per purchased bundle. Requires Pro OR an unused credit."""
     user = await get_current_user(request)
-    
-    # Check access
+
     has_pro = user.get("is_pro", False)
-    
+    requested_bundle = export_req.bundle if export_req.bundle in BUNDLE_OPTIONS else "dxf"
+    consumed_credit_id = None
+
     if not has_pro:
-        credits = await db.export_credits.find_one({"user_id": user["id"]})
-        if not credits or credits.get("remaining", 0) <= 0:
+        # Find an unused credit matching the requested bundle (or any higher-tier credit)
+        credit = await db.export_credits.find_one({
+            "user_id": user["id"],
+            "used": False,
+            "bundle": requested_bundle,
+        })
+        if not credit:
             raise HTTPException(
-                status_code=403, 
-                detail="Pro subscription or export credits required. Purchase at /pricing"
+                status_code=403,
+                detail="No matching paid export credit. Purchase this bundle or upgrade to Pro.",
             )
-        # Deduct credit
-        await db.export_credits.update_one(
-            {"user_id": user["id"]},
-            {"$inc": {"remaining": -1}}
-        )
-    
+        consumed_credit_id = credit["_id"]
+
     # Generate files
     config = CNCConfig()
     parts = calculate_desk_parts(export_req.params)
     nesting = simple_nesting(parts, config.sheet_width, config.sheet_height)
-    
-    # Generate all file contents
-    gcode_content = generate_full_gcode(nesting.parts, config, export_req.design_name)
-    dxf_content = generate_dxf(nesting.parts, config, export_req.design_name)
-    pdf_html = generate_pdf_html(nesting.parts, nesting, export_req.params, export_req.design_name)
-    
-    # Store export record
+
+    bundle_cfg = BUNDLE_OPTIONS[requested_bundle]
+    bundle_files = bundle_cfg["files"]
+
+    gcode_content = generate_full_gcode(nesting.parts, config, export_req.design_name) if "gcode" in bundle_files else ""
+    dxf_content = generate_dxf(nesting.parts, config, export_req.design_name) if "dxf" in bundle_files else ""
+    svg_content = generate_svg(nesting.parts, config, export_req.design_name) if "svg" in bundle_files else ""
+    pdf_html = generate_pdf_html(nesting.parts, nesting, export_req.params, export_req.design_name) if "pdf" in bundle_files else ""
+
     export_id = str(uuid.uuid4())
     await db.exports.insert_one({
         "export_id": export_id,
         "user_id": user["id"],
         "design_name": export_req.design_name,
+        "bundle": requested_bundle,
         "params": export_req.params.model_dump(),
         "gcode": gcode_content,
         "dxf": dxf_content,
+        "svg": svg_content,
         "pdf_html": pdf_html,
         "created_at": datetime.now(timezone.utc),
-        "expires_at": datetime.now(timezone.utc) + timedelta(hours=24)
+        "expires_at": datetime.now(timezone.utc) + timedelta(hours=24),
     })
-    
-    disclaimer = """IMPORTANT: These files are high-quality REFERENCE files. 
-You MUST verify all toolpaths in your CAM software (VCarve, Fusion 360, etc.) before cutting. 
-UltimateDesk is not responsible for machine damage, material waste, or injury from unverified toolpaths."""
-    
+
+    # Mark credit used AFTER successful generation
+    if consumed_credit_id is not None:
+        await db.export_credits.update_one(
+            {"_id": consumed_credit_id},
+            {"$set": {"used": True, "used_at": datetime.now(timezone.utc), "export_id": export_id}},
+        )
+
+    files = {}
+    for ft in bundle_files:
+        files[ft] = f"/api/exports/download/{export_id}/{ft}"
+
+    disclaimer = (
+        "IMPORTANT: These files are high-quality REFERENCE files. "
+        "You MUST verify all toolpaths in your CAM software (VCarve, Fusion 360, etc.) before cutting. "
+        "UltimateDesk is not responsible for machine damage, material waste, or injury from unverified toolpaths."
+    )
+
     return {
         "success": True,
         "export_id": export_id,
-        "files": {
-            "gcode": f"/api/exports/download/{export_id}/gcode",
-            "dxf": f"/api/exports/download/{export_id}/dxf",
-            "pdf": f"/api/exports/download/{export_id}/pdf"
-        },
+        "bundle": requested_bundle,
+        "bundle_label": bundle_cfg["label"],
+        "files": files,
         "disclaimer": disclaimer,
-        "message": "Export files generated successfully. Files expire in 24 hours."
+        "message": "Export files generated successfully. Files expire in 24 hours.",
     }
 
 @exports_router.get("/download/{export_id}/{file_type}")
@@ -1406,8 +1496,12 @@ async def download_export_file(export_id: str, file_type: str, request: Request)
     if not export:
         raise HTTPException(status_code=404, detail="Export not found or expired")
     
-    if export.get("expires_at") and export["expires_at"] < datetime.now(timezone.utc):
-        raise HTTPException(status_code=410, detail="Export has expired. Please generate new files.")
+    if export.get("expires_at"):
+        exp = export["expires_at"]
+        if exp.tzinfo is None:
+            exp = exp.replace(tzinfo=timezone.utc)
+        if exp < datetime.now(timezone.utc):
+            raise HTTPException(status_code=410, detail="Export has expired. Please generate new files.")
     
     design_name = export.get("design_name", "UltimateDesk").replace(" ", "_")
     
@@ -1419,12 +1513,19 @@ async def download_export_file(export_id: str, file_type: str, request: Request)
         content = export.get("dxf", "")
         filename = f"{design_name}.dxf"
         media_type = "application/dxf"
+    elif file_type == "svg":
+        content = export.get("svg", "")
+        filename = f"{design_name}.svg"
+        media_type = "image/svg+xml"
     elif file_type == "pdf":
         content = export.get("pdf_html", "")
         filename = f"{design_name}_cutting_sheet.html"
         media_type = "text/html"
     else:
         raise HTTPException(status_code=400, detail="Invalid file type")
+
+    if not content:
+        raise HTTPException(status_code=404, detail=f"This bundle does not include a {file_type} file")
     
     return Response(
         content=content,
@@ -1468,12 +1569,20 @@ async def stripe_webhook(request: Request):
                             {"$set": {"is_pro": True, "pro_since": datetime.now(timezone.utc)}}
                         )
                     elif product == "single_export":
-                        # Add 1 export credit
-                        await db.export_credits.update_one(
-                            {"user_id": user_id},
-                            {"$inc": {"remaining": 1}, "$set": {"updated_at": datetime.now(timezone.utc)}},
-                            upsert=True
-                        )
+                        # Add 1 export credit tied to the purchased bundle
+                        bundle = transaction.get("bundle", "dxf")
+                        commercial = bool(transaction.get("commercial_license", False))
+                        await db.export_credits.insert_one({
+                            "user_id": user_id,
+                            "session_id": event.session_id,
+                            "bundle": bundle,
+                            "commercial_license": commercial,
+                            "params_snapshot": transaction.get("params_snapshot"),
+                            "design_name": transaction.get("design_name", "UltimateDesk Design"),
+                            "amount_paid": transaction.get("amount"),
+                            "used": False,
+                            "created_at": datetime.now(timezone.utc),
+                        })
         
         return {"received": True}
     except Exception as e:
@@ -1481,6 +1590,51 @@ async def stripe_webhook(request: Request):
         return {"received": True, "error": str(e)}
 
 PRO_SUBSCRIPTION_PRICE = PRO_MONTHLY_PRICE  # Keep backward compatibility
+
+# ============== PRICING ROUTES ==============
+
+class QuoteRequestBody(BaseModel):
+    params: DesignParams
+    bundle: str = "dxf"
+    commercial_license: bool = False
+
+
+@pricing_router.get("/bundles")
+async def list_bundles():
+    """Return the catalog of purchasable bundles + base pricing constants for the UI."""
+    from pricing import (
+        BASE_FEE, SHEET_FEE, PART_FEE_OVER_THRESHOLD, PART_THRESHOLD,
+        FEATURE_FEE_EACH, JOINT_FEES, COMMERCIAL_LICENSE_FEE, CURRENCY,
+    )
+    return {
+        "currency": CURRENCY,
+        "bundles": get_bundle_catalog(),
+        "constants": {
+            "base_fee": BASE_FEE,
+            "sheet_fee": SHEET_FEE,
+            "part_fee_over_threshold": PART_FEE_OVER_THRESHOLD,
+            "part_threshold": PART_THRESHOLD,
+            "feature_fee_each": FEATURE_FEE_EACH,
+            "joint_fees": JOINT_FEES,
+            "commercial_license_fee": COMMERCIAL_LICENSE_FEE,
+        },
+    }
+
+
+@pricing_router.post("/quote", response_model=QuoteBreakdown)
+async def pricing_quote(body: QuoteRequestBody):
+    """Live quote — no auth required. Computes sheets + parts from params then prices."""
+    parts = calculate_desk_parts(body.params)
+    nesting = simple_nesting(parts, 2400, 1200)
+    total_part_qty = sum(p.get("quantity", 1) for p in parts)
+    return calculate_quote(
+        body.params.model_dump(),
+        sheets_required=nesting.sheets_required,
+        part_count=total_part_qty,
+        bundle=body.bundle,
+        commercial_license=body.commercial_license,
+    )
+
 
 # ============== INCLUDE ROUTERS ==============
 
@@ -1490,6 +1644,7 @@ api_router.include_router(chat_router)
 api_router.include_router(cnc_router)
 api_router.include_router(payments_router)
 api_router.include_router(exports_router)
+api_router.include_router(pricing_router)
 
 @api_router.get("/")
 async def root():

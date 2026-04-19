@@ -37,29 +37,8 @@ const Pricing = () => {
   const [isLoadingSingle, setIsLoadingSingle] = useState(false);
   const [isLoadingPro, setIsLoadingPro] = useState(false);
 
-  const handlePurchaseSingle = async () => {
-    if (!isAuthenticated) {
-      navigate('/auth', { state: { from: { pathname: '/pricing' } } });
-      return;
-    }
-
-    setIsLoadingSingle(true);
-    try {
-      const { data } = await axios.post(
-        `${API}/exports/purchase-single`,
-        { origin_url: window.location.origin },
-        { withCredentials: true }
-      );
-      
-      if (data.url) {
-        window.location.href = data.url;
-      }
-    } catch (error) {
-      console.error('Checkout error:', error);
-      alert('Failed to create checkout. Please try again.');
-    } finally {
-      setIsLoadingSingle(false);
-    }
+  const handlePurchaseSingle = () => {
+    navigate('/designer');
   };
 
   const handlePurchasePro = async () => {
@@ -102,12 +81,14 @@ const Pricing = () => {
 
   const singleFeatures = [
     { text: 'Everything in Free', included: true },
-    { text: '1 complete export package:', included: true },
-    { text: '→ Full DXF file (CAD-ready)', included: true, indent: true },
-    { text: '→ Complete G-Code file', included: true, indent: true },
-    { text: '→ PDF cutting sheet', included: true, indent: true },
+    { text: 'Pay per design — price scales with:', included: true },
+    { text: '→ Material sheets required', included: true, indent: true },
+    { text: '→ Part count & joint complexity', included: true, indent: true },
+    { text: '→ Premium features enabled', included: true, indent: true },
+    { text: 'Pick your bundle (DXF → Full Pack)', included: true },
+    { text: 'Optional commercial-use license', included: true },
+    { text: 'Transparent live quote before checkout', included: true },
     { text: 'Files valid for 24 hours', included: true },
-    { text: 'Safety disclaimers included', included: true },
   ];
 
   const proFeatures = [
@@ -231,7 +212,7 @@ const Pricing = () => {
             </Button>
           </motion.div>
 
-          {/* Single Export */}
+          {/* Per-design pricing */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -240,14 +221,15 @@ const Pricing = () => {
           >
             <div className="flex items-center gap-2 mb-4">
               <Download size={24} className="text-blue-500" />
-              <h2 className="text-xl font-bold">Single Export</h2>
+              <h2 className="text-xl font-bold">Per-Design Export</h2>
             </div>
-            <div className="mb-4">
-              <span className="text-3xl font-black">$4.99</span>
+            <div className="mb-1">
+              <span className="text-3xl font-black">from $14</span>
               <span className="text-[var(--text-secondary)]"> NZD</span>
             </div>
-            <p className="text-[var(--text-secondary)] text-sm mb-6">
-              Perfect for one-off projects
+            <p className="text-xs text-[var(--text-secondary)] mb-4">
+              Small desk, 1 sheet, simple joints: <strong>$14</strong><br />
+              Large studio, 3 sheets, premium features: <strong>~$34–45</strong>
             </p>
 
             <ul className="space-y-2 mb-6 text-sm">
@@ -259,13 +241,12 @@ const Pricing = () => {
               ))}
             </ul>
 
-            <Button 
+            <Button
               className="w-full bg-blue-500 hover:bg-blue-600 text-white"
               onClick={handlePurchaseSingle}
-              disabled={isLoadingSingle}
               data-testid="buy-single-btn"
             >
-              {isLoadingSingle ? 'Loading...' : 'Buy Single Export'}
+              Design & See My Price
             </Button>
           </motion.div>
 

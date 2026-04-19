@@ -1,8 +1,14 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { ArrowsOutSimple, Ruler, Cube, Monitor, Headphones, Lamp, MusicNote } from '@phosphor-icons/react';
+import { ArrowsOutSimple, Ruler, Cube, Monitor, Headphones, Lamp, MusicNote, Lock } from '@phosphor-icons/react';
+import { useAuth } from '../context/AuthContext';
 
 const DeskPreview3D = ({ params, className = '' }) => {
+  const { isPro, user } = useAuth();
+  const isProtected = !isPro;
+  const watermarkText = user?.email
+    ? `UltimateDesk preview — ${user.email}`
+    : 'UltimateDesk — preview only';
   const [exploded, setExploded] = useState(false);
   const [showDimensions, setShowDimensions] = useState(false);
   const canvasRef = useRef(null);
@@ -275,6 +281,35 @@ const DeskPreview3D = ({ params, className = '' }) => {
       
       // Increment rotation for animation
       rotationRef.current += 1;
+
+      // === COPY PROTECTION: diagonal watermark for non-Pro ===
+      if (isProtected) {
+        ctx.save();
+        ctx.globalAlpha = 0.22;
+        ctx.fillStyle = '#FFFFFF';
+        ctx.font = 'bold 20px Helvetica, Arial, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.translate(width / 2, height / 2);
+        ctx.rotate(-Math.PI / 7);
+        const stepY = 130;
+        for (let yy = -height; yy < height; yy += stepY) {
+          for (let xx = -width; xx < width; xx += 380) {
+            ctx.fillText(watermarkText, xx, yy);
+          }
+        }
+        ctx.restore();
+
+        // Subtle noise layer to discourage clean screenshot vectorisation
+        ctx.save();
+        ctx.globalAlpha = 0.05;
+        for (let i = 0; i < 800; i++) {
+          ctx.fillStyle = Math.random() > 0.5 ? '#FFFFFF' : '#000000';
+          ctx.fillRect(Math.random() * width, Math.random() * height, 1, 1);
+        }
+        ctx.restore();
+      }
+
       animationRef.current = requestAnimationFrame(draw);
     };
     
@@ -285,7 +320,7 @@ const DeskPreview3D = ({ params, className = '' }) => {
         cancelAnimationFrame(animationRef.current);
       }
     };
-  }, [params, exploded, colors]);
+  }, [params, exploded, colors, isProtected, watermarkText]);
 
   // Helper function to draw isometric box
   function drawIsometricBox(ctx, x, y, w, h, d, colorTop, colorSide, customTop = null) {
@@ -337,6 +372,11 @@ const DeskPreview3D = ({ params, className = '' }) => {
     return '#' + (b | (g << 8) | (r << 16)).toString(16).padStart(6, '0');
   }
 
+  // Dimension display helpers (copy protection: round/obscure for non-Pro)
+  const roundToRange = (v, step = 50) => `~${Math.round(v / step) * step}`;
+  const fmtDim = (v) => (isProtected ? roundToRange(v) : `${v}`);
+  const fmtMat = (v) => (isProtected ? '18' : `${v}`);
+
   // Feature icons
   const activeFeatures = [];
   if (params.has_rgb_channels) activeFeatures.push({ icon: Lamp, label: 'RGB' });
@@ -345,7 +385,13 @@ const DeskPreview3D = ({ params, className = '' }) => {
   if (params.has_mixer_tray) activeFeatures.push({ icon: MusicNote, label: 'Mixer' });
 
   return (
-    <div className={`relative w-full h-full min-h-[400px] ${className}`}>
+    <div
+      className={`relative w-full h-full min-h-[400px] ${className}`}
+      onContextMenu={isProtected ? (e) => e.preventDefault() : undefined}
+      onDragStart={isProtected ? (e) => e.preventDefault() : undefined}
+      style={isProtected ? { userSelect: 'none', WebkitUserSelect: 'none' } : undefined}
+      data-testid="desk-preview-root"
+    >
       {/* Control buttons */}
       <div className="absolute top-4 right-4 z-10 flex gap-2">
         <motion.button
@@ -401,43 +447,54 @@ const DeskPreview3D = ({ params, className = '' }) => {
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
           className="absolute top-16 right-4 z-10 neu-surface rounded-lg p-3"
+          data-testid="dimension-panel"
         >
           <div className="space-y-1 text-sm font-mono">
             <div className="flex justify-between gap-4">
               <span className="text-[var(--text-secondary)]">Width:</span>
-              <span className="font-bold">{params.width}mm</span>
+              <span className="font-bold">{fmtDim(params.width)}mm</span>
             </div>
             <div className="flex justify-between gap-4">
               <span className="text-[var(--text-secondary)]">Depth:</span>
-              <span className="font-bold">{params.depth}mm</span>
+              <span className="font-bold">{fmtDim(params.depth)}mm</span>
             </div>
             <div className="flex justify-between gap-4">
               <span className="text-[var(--text-secondary)]">Height:</span>
-              <span className="font-bold">{params.height}mm</span>
+              <span className="font-bold">{fmtDim(params.height)}mm</span>
             </div>
             <div className="flex justify-between gap-4 pt-1 border-t border-[var(--border)]">
               <span className="text-[var(--text-secondary)]">Material:</span>
-              <span className="font-bold">{params.material_thickness}mm</span>
+              <span className="font-bold">{fmtMat(params.material_thickness)}mm</span>
             </div>
+            {isProtected && (
+              <div className="pt-2 mt-1 border-t border-[var(--border)] flex items-center gap-1.5 text-[10px] text-[var(--text-secondary)]">
+                <Lock size={11} /> Exact values unlocked after export
+              </div>
+            )}
           </div>
         </motion.div>
       )}
 
       {/* Stats overlay */}
-      <div className="absolute bottom-4 left-4 z-10 glass-surface rounded-lg p-3">
+      <div className="absolute bottom-4 left-4 z-10 glass-surface rounded-lg p-3" data-testid="preview-stats">
         <div className="flex items-center gap-4 text-sm font-mono">
           <div>
             <span className="text-[var(--text-secondary)]">W:</span>
-            <span className="ml-1 font-bold">{params.width}</span>
+            <span className="ml-1 font-bold">{fmtDim(params.width)}</span>
           </div>
           <div>
             <span className="text-[var(--text-secondary)]">D:</span>
-            <span className="ml-1 font-bold">{params.depth}</span>
+            <span className="ml-1 font-bold">{fmtDim(params.depth)}</span>
           </div>
           <div>
             <span className="text-[var(--text-secondary)]">H:</span>
-            <span className="ml-1 font-bold">{params.height}</span>
+            <span className="ml-1 font-bold">{fmtDim(params.height)}</span>
           </div>
+          {isProtected && (
+            <span className="flex items-center gap-1 text-[10px] uppercase tracking-wide text-[var(--text-secondary)] border-l border-[var(--border)] pl-3">
+              <Lock size={10} /> preview
+            </span>
+          )}
         </div>
       </div>
       
@@ -459,3 +516,4 @@ const DeskPreview3D = ({ params, className = '' }) => {
 };
 
 export default DeskPreview3D;
+
