@@ -1,0 +1,70 @@
+{
+  "summary": "Iteration 3 testing COMPLETE. New pricing constants ($15/$6/$29/$80), material note on quote, /api/pricing/share + /shared/{slug} + /shared/{slug}/pdf endpoints, and SharedQuote public page all verified. Backend: 13/13 unit + 9/9 new integration = 22/22 PASS. Frontend: SharedQuote page, ExportDialog material note, commercial license label ($29), Share flow all PASS. Regressions (live-price-pill, watermark, Pro full_pack) all still working. One minor observation: backend returns share_url with K8s-internal cluster host (see notes).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "POST /api/pricing/share → share_url in response",
+        "issue": "Backend returns share_url pointing to the internal cluster domain (e.g., https://desk-ai-designer.cluster-0.preview.emergentcf.cloud/quote/<slug>) instead of the public frontend host (desk-ai-designer.preview.emergentagent.com). The link still resolves/works, but copying it to share externally exposes the cluster URL. Root cause: `request.headers.get('origin')` in /app/backend/server.py ~L1671 receives the cluster-internal Origin because the ingress rewrites it before reaching FastAPI. Link still functional, so non-blocking.",
+        "affected_selectors": ["share-link-input"]
+      }
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_pricing.py",
+    "/app/backend/tests/test_share_quote.py",
+    "/app/test_reports/pytest/pytest_results.xml",
+    "/app/test_reports/pytest/share_quote_results.xml"
+  ],
+  "action_items": [
+    "(Optional/low priority) Normalise share_url host in POST /api/pricing/share so the returned link always uses the public frontend host. The frontend ExportDialog already falls back to window.location.origin when share_url is missing — but since backend does return an absolute URL it is used verbatim. Consider prefering REACT_APP_BACKEND_URL-equivalent env var on the backend or a known allow-list of frontend hosts."
+  ],
+  "critical_code_review_comments": [
+    "pricing.py constants cleanly updated (BASE_FEE=15, SHEET_FEE=6, COMMERCIAL_LICENSE_FEE=29, MATERIAL_COST_PER_SHEET_NZD=80). QuoteBreakdown now has material_cost_estimate + material_note. All unit tests updated and passing.",
+    "test_pricing.py has duplicate definitions of test_bundle_upgrade_increases_price and test_more_sheets_increases_price (L82-94 repeats L70-81 content). Second definition wins in pytest so both are effectively single tests — recommend removing the dup block to avoid confusion.",
+    "New pricing_router endpoints (/pricing/share, /pricing/shared/{slug}, /pricing/shared/{slug}/pdf) are unauthenticated as per spec. Slug uses uuid4.hex[:10] — adequate entropy for low-volume traffic; would recommend 16+ hex for production scale.",
+    "_render_quote_html correctly includes 'UltimateDesk', 'Export total', and 'Plywood (separate)' — all three verified via GET /api/pricing/shared/<slug>/pdf integration test.",
+    "Views counter on shared quote increments on each GET (verified).",
+    "ExportDialog.jsx constructs pdf_url using window.location.origin (L177) — safe, works from any host. Commercial license label now reads from catalog (`+$${commercialFee} NZD`), correctly renders $29.",
+    "SharedQuote.jsx error state renders 'Quote not found or link expired' with `data-testid=shared-quote-error` — proper UX for invalid slug.",
+    "server.py still 1700+ lines — consider splitting pricing_router and exports_router into modules (non-blocking, carried over from iteration 2).",
+    "shared_quotes docs have no TTL index — PRD says `expires: null`, so that is intentional, but consider adding a cleanup job if growth becomes an issue."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_share_quote.py (new — 9 integration tests for share/PDF/new constants)"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": {
+    "admin": {"email": "admin@ultimatedesk.com", "password": "Admin123!"},
+    "fresh_user_pattern": "TEST_share_<timestamp>@example.com / Passw0rd!"
+  },
+  "seed_data_creation": "Registered 1 fresh non-Pro user for ExportDialog share testing. Created ~3 shared_quotes docs (slugs prefixed design_name with 'E2E' and 'TEST_'). 1 export doc created for admin full_pack regression check.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "All iteration 3 features verified end-to-end. Share link backend+frontend wiring works. When calling the share API from within a browser page, Origin header becomes the cluster-internal host — ExportDialog consumes data.share_url verbatim, so the displayed/copied link carries the cluster hostname rather than the preview hostname. The link still works (cluster routes to same app), so this is a cosmetic/UX concern not a functional bug. Pricing page Pricing.jsx shows the new range copy verbatim from spec (Small $22-28, Medium $35-45, Gaming/studio $50-75).",
+  "features_tested": {
+    "GET /api/pricing/bundles constants": "PASS - base_fee=15, sheet_fee=6, commercial_license_fee=29",
+    "POST /api/pricing/quote small office": "PASS - total=$22 in 20-28 range, material_cost_estimate>0, material_note contains 'Material' and '$80'",
+    "POST /api/pricing/quote medium gaming": "PASS - total in 35-50 range",
+    "POST /api/pricing/quote large studio full_pack": "PASS - total in 55-80, commercial_license adds ~$29",
+    "POST /api/pricing/share": "PASS - slug is 10 hex chars, share_url ends /quote/{slug}, pdf_url=/api/pricing/shared/{slug}/pdf",
+    "GET /api/pricing/shared/{slug}": "PASS - returns saved quote, views counter increments on each GET",
+    "GET /api/pricing/shared/{slug}/pdf": "PASS - 200 HTML contains 'UltimateDesk', 'Export total', 'Plywood (separate)'",
+    "GET /api/pricing/shared/{nonexistent}/pdf": "PASS - 404",
+    "GET /api/pricing/shared/{nonexistent}": "PASS - 404",
+    "pytest test_pricing.py": "PASS 13/13 including new test_medium_desk_range",
+    "Frontend /quote/:slug SharedQuote page valid slug": "PASS - shows design_name, headline, total ($46), material-note, shared-quote-pdf-btn, shared-quote-cta-btn",
+    "Frontend /quote/:slug invalid slug": "PASS - shows 'Quote not found or link expired' with data-testid=shared-quote-error",
+    "ExportDialog material-note in live-quote-card": "PASS - 'Material ~$160 NZD (2 × 18mm plywood sheet at ~$80/sheet)'",
+    "ExportDialog commercial-license-toggle label": "PASS - shows '+$29 NZD'",
+    "ExportDialog share-quote-btn flow": "PASS - POSTs /api/pricing/share, renders share-link-input + copy-share-link-btn + open-share-link-btn + download-quote-pdf-btn",
+    "Regression: live-price-pill for non-Pro": "PASS - 'from $29 NZD' visible in header",
+    "Regression: canvas watermark for non-Pro": "PASS - diagonal email-based watermark painted across DeskPreview3D canvas",
+    "Regression: Pro admin full_pack generate": "PASS - returns files dict with dxf+svg+gcode+pdf"
+  }
+}

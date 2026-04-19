@@ -1636,6 +1636,148 @@ async def pricing_quote(body: QuoteRequestBody):
     )
 
 
+# ----- Shareable quote links -----
+
+class ShareQuoteRequest(BaseModel):
+    params: DesignParams
+    bundle: str = "dxf"
+    commercial_license: bool = False
+    design_name: str = "My Custom Desk"
+
+
+def _build_share_slug() -> str:
+    # URL-safe short id: uuid4 first 10 chars, collision unlikely given traffic
+    return uuid.uuid4().hex[:10]
+
+
+@pricing_router.post("/share")
+async def create_share_link(body: ShareQuoteRequest, request: Request):
+    """Save a quote snapshot and return a shareable slug + public URL."""
+    parts = calculate_desk_parts(body.params)
+    nesting = simple_nesting(parts, 2400, 1200)
+    total_part_qty = sum(p.get("quantity", 1) for p in parts)
+    quote = calculate_quote(
+        body.params.model_dump(),
+        sheets_required=nesting.sheets_required,
+        part_count=total_part_qty,
+        bundle=body.bundle,
+        commercial_license=body.commercial_license,
+    )
+
+    slug = _build_share_slug()
+    origin = str(request.base_url).rstrip("/")
+    # Prefer request Origin header (user's actual frontend host) over the backend base URL
+    origin_header = request.headers.get("origin") or request.headers.get("referer", "").split("/")[:3]
+    frontend_origin = request.headers.get("origin") or origin
+
+    await db.shared_quotes.insert_one({
+        "slug": slug,
+        "design_name": body.design_name,
+        "params": body.params.model_dump(),
+        "bundle": body.bundle,
+        "commercial_license": body.commercial_license,
+        "quote": quote.model_dump(),
+        "created_at": datetime.now(timezone.utc),
+        "views": 0,
+    })
+
+    return {
+        "slug": slug,
+        "share_url": f"{frontend_origin}/quote/{slug}",
+        "quote_api_url": f"/api/pricing/shared/{slug}",
+        "pdf_url": f"/api/pricing/shared/{slug}/pdf",
+        "expires": None,
+    }
+
+
+@pricing_router.get("/shared/{slug}")
+async def get_shared_quote(slug: str):
+    doc = await db.shared_quotes.find_one({"slug": slug}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Quote not found")
+    await db.shared_quotes.update_one({"slug": slug}, {"$inc": {"views": 1}})
+    return doc
+
+
+def _render_quote_html(doc: Dict[str, Any]) -> str:
+    q = doc["quote"]
+    design_name = doc.get("design_name", "UltimateDesk Design")
+    params = doc.get("params", {})
+    li_rows = "".join(
+        f"<tr><td>{li['label']}"
+        + (f"<br><span class='detail'>{li['detail']}</span>" if li.get('detail') else "")
+        + f"</td><td class='amt'>${li['amount']:.2f}</td></tr>"
+        for li in q["line_items"]
+    )
+    commercial_row = (
+        f"<tr><td>Commercial-use license</td><td class='amt'>${q['commercial_fee']:.2f}</td></tr>"
+        if q.get("commercial_license") else ""
+    )
+    return f"""<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>Quote — {design_name}</title>
+<style>
+ body {{ font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 760px; margin: 40px auto; color: #111; padding: 24px; }}
+ h1 {{ color: #FF3B30; margin: 0 0 4px 0; letter-spacing: -0.02em; }}
+ .meta {{ color: #666; font-size: 13px; margin-bottom: 24px; }}
+ .headline {{ font-size: 18px; font-weight: 600; margin: 16px 0 4px; }}
+ table {{ width: 100%; border-collapse: collapse; margin-top: 12px; }}
+ td {{ padding: 10px 4px; border-bottom: 1px solid #eee; vertical-align: top; font-size: 14px; }}
+ td.amt {{ text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }}
+ .detail {{ color: #888; font-size: 12px; }}
+ .total {{ display: flex; justify-content: space-between; align-items: baseline; margin-top: 18px;
+           border-top: 2px solid #111; padding-top: 16px; }}
+ .total .amt {{ font-size: 32px; font-weight: 800; color: #FF3B30; }}
+ .material {{ background: #FFF8E1; border: 1px solid #FFE082; border-radius: 8px; padding: 12px; margin: 16px 0; font-size: 13px; color: #5D4037; }}
+ .bundle-tag {{ display: inline-block; padding: 4px 10px; background: #111; color: #fff; border-radius: 999px; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; }}
+ .print-btn {{ background: #111; color: #fff; border: 0; padding: 10px 18px; border-radius: 8px; cursor: pointer; font-weight: 600; margin-top: 24px; }}
+ @media print {{ .print-btn {{ display: none; }} }}
+ .footer {{ margin-top: 32px; color: #888; font-size: 12px; border-top: 1px solid #eee; padding-top: 12px; }}
+</style></head>
+<body>
+  <h1>UltimateDesk CNC Pro</h1>
+  <div class="meta">
+    <span class="bundle-tag">{q['bundle_label']}</span>
+    &nbsp;·&nbsp; Quote generated {doc['created_at'].strftime('%Y-%m-%d') if hasattr(doc.get('created_at',''), 'strftime') else ''}
+  </div>
+  <div class="headline">{design_name}</div>
+  <div style="color:#555; font-size:14px;">{q['headline']}</div>
+
+  <table>
+    {li_rows}
+    {commercial_row}
+  </table>
+
+  <div class="material">
+    <strong>Plywood (separate):</strong> {q.get('material_note', '')}
+  </div>
+
+  <div class="total">
+    <span style="font-weight:700;">Export total</span>
+    <span class="amt">${int(q['total'])} NZD</span>
+  </div>
+
+  <button class="print-btn" onclick="window.print()">Save as PDF / Print</button>
+
+  <div class="footer">
+    Design: {params.get('desk_type', 'custom')} · {params.get('width', 0)}×{params.get('depth', 0)}×{params.get('height', 0)} mm ·
+    {q['sheets_required']} sheet(s) · {q['part_count']} parts.<br>
+    Export files include: {', '.join(q.get('bundle_files', []))}.<br>
+    This quote is valid for pricing guidance only. Verify all CNC toolpaths in your CAM software before cutting.
+  </div>
+</body></html>"""
+
+
+@pricing_router.get("/shared/{slug}/pdf")
+async def get_shared_quote_pdf(slug: str):
+    """Return an HTML document the browser can 'Save as PDF' — lightweight, no extra deps."""
+    doc = await db.shared_quotes.find_one({"slug": slug})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Quote not found")
+    doc.pop("_id", None)
+    html = _render_quote_html(doc)
+    return Response(content=html, media_type="text/html")
+
+
 # ============== INCLUDE ROUTERS ==============
 
 api_router.include_router(auth_router)

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import {
   Download,
@@ -7,12 +7,14 @@ import {
   Cube,
   FilePdf,
   Warning,
-  Check,
   Spinner,
   ArrowRight,
   Lock,
   CheckCircle,
   Info,
+  Share,
+  Check,
+  Copy,
 } from '@phosphor-icons/react';
 import { Button } from './ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
@@ -52,6 +54,9 @@ const ExportDialog = ({ isOpen, onClose, params, designName }) => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [exportResult, setExportResult] = useState(null);
   const [error, setError] = useState(null);
+  const [shareLink, setShareLink] = useState(null);
+  const [isSharing, setIsSharing] = useState(false);
+  const [shareCopied, setShareCopied] = useState(false);
 
   // Load bundle catalog once
   useEffect(() => {
@@ -151,7 +156,42 @@ const ExportDialog = ({ isOpen, onClose, params, designName }) => {
   const handleClose = () => {
     setExportResult(null);
     setError(null);
+    setShareLink(null);
+    setShareCopied(false);
     onClose();
+  };
+
+  const handleShareQuote = async () => {
+    setIsSharing(true);
+    setError(null);
+    try {
+      const { data } = await axios.post(`${API}/pricing/share`, {
+        params,
+        bundle,
+        commercial_license: commercial,
+        design_name: designName,
+      });
+      const fullUrl = data.share_url?.startsWith('http')
+        ? data.share_url
+        : `${window.location.origin}/quote/${data.slug}`;
+      const pdfUrl = `${window.location.origin}/api/pricing/shared/${data.slug}/pdf`;
+      setShareLink({ url: fullUrl, pdf_url: pdfUrl, slug: data.slug });
+    } catch (e) {
+      setError(e.response?.data?.detail || 'Failed to create share link');
+    } finally {
+      setIsSharing(false);
+    }
+  };
+
+  const copyShareLink = async () => {
+    if (!shareLink?.url) return;
+    try {
+      await navigator.clipboard.writeText(shareLink.url);
+      setShareCopied(true);
+      setTimeout(() => setShareCopied(false), 2000);
+    } catch {
+      setShareCopied(false);
+    }
   };
 
   const bundles = catalog?.bundles || [];
@@ -293,7 +333,9 @@ const ExportDialog = ({ isOpen, onClose, params, designName }) => {
               <div className="flex-1">
                 <div className="flex items-center justify-between">
                   <span className="font-bold text-sm">Commercial-use license</span>
-                  <span className="text-xs text-[var(--text-secondary)]">+$19 NZD</span>
+                  <span className="text-xs text-[var(--text-secondary)]">
+                    +${catalog?.constants?.commercial_license_fee ?? 29} NZD
+                  </span>
                 </div>
                 <p className="text-xs text-[var(--text-secondary)] mt-0.5">
                   Permits selling desks built from these files.
@@ -341,6 +383,16 @@ const ExportDialog = ({ isOpen, onClose, params, designName }) => {
                       ${quote.total} <span className="text-sm font-normal">NZD</span>
                     </span>
                   </div>
+
+                  {quote.material_note && (
+                    <div
+                      className="mt-3 text-xs text-[var(--text-secondary)] bg-yellow-500/10 border border-yellow-500/30 rounded-md px-3 py-2 flex items-start gap-2"
+                      data-testid="material-note"
+                    >
+                      <Info size={14} className="mt-0.5 flex-shrink-0 text-yellow-500" />
+                      <span>{quote.material_note}</span>
+                    </div>
+                  )}
                 </>
               ) : (
                 <p className="text-sm text-[var(--text-secondary)]">Calculating…</p>
@@ -394,6 +446,63 @@ const ExportDialog = ({ isOpen, onClose, params, designName }) => {
                 You have a paid credit for <strong>{latestCreditBundle}</strong>. Switch bundle above to use it.
               </p>
             )}
+
+            {/* Share quote */}
+            <div className="pt-3 border-t border-[var(--border)]">
+              {!shareLink ? (
+                <Button
+                  variant="outline"
+                  onClick={handleShareQuote}
+                  disabled={isSharing || !quote}
+                  className="w-full"
+                  data-testid="share-quote-btn"
+                >
+                  {isSharing ? (
+                    <>Preparing link…</>
+                  ) : (
+                    <><Share size={16} className="mr-2" /> Share this quote (send to your partner, boss…)</>
+                  )}
+                </Button>
+              ) : (
+                <div className="space-y-2" data-testid="share-quote-result">
+                  <div className="flex items-center gap-2 p-2.5 rounded-lg bg-[var(--surface-elevated)] border border-[var(--border)]">
+                    <input
+                      readOnly
+                      value={shareLink.url}
+                      className="flex-1 bg-transparent text-xs font-mono outline-none"
+                      data-testid="share-link-input"
+                      onFocus={(e) => e.target.select()}
+                    />
+                    <button
+                      onClick={copyShareLink}
+                      className="p-1.5 rounded hover:bg-[var(--surface)]"
+                      title="Copy link"
+                      data-testid="copy-share-link-btn"
+                    >
+                      {shareCopied ? <Check size={16} className="text-green-500" /> : <Copy size={16} />}
+                    </button>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      className="flex-1"
+                      onClick={() => window.open(shareLink.url, '_blank')}
+                      data-testid="open-share-link-btn"
+                    >
+                      Open quote page
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="flex-1"
+                      onClick={() => window.open(shareLink.pdf_url, '_blank')}
+                      data-testid="download-quote-pdf-btn"
+                    >
+                      <FilePdf size={16} className="mr-2" /> PDF
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
 
             {error && (
               <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-sm text-red-400" data-testid="export-error">

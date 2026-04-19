@@ -29,8 +29,8 @@ from pydantic import BaseModel, Field
 
 # ---- Constants (single source of truth) ----
 
-BASE_FEE = 10.0
-SHEET_FEE = 4.0
+BASE_FEE = 15.0
+SHEET_FEE = 6.0
 PART_FEE_OVER_THRESHOLD = 0.50
 PART_THRESHOLD = 6  # first 6 parts included in base
 
@@ -61,7 +61,11 @@ BUNDLE_OPTIONS = {
 }
 DEFAULT_BUNDLE = "dxf"
 
-COMMERCIAL_LICENSE_FEE = 19.0
+COMMERCIAL_LICENSE_FEE = 29.0
+
+# Indicative material cost — user buys plywood separately at their local merchant.
+# NZ average: ~$80 per 18mm 2400x1200mm sheet (use as estimate only).
+MATERIAL_COST_PER_SHEET_NZD = 80.0
 
 CURRENCY = "nzd"
 
@@ -89,6 +93,8 @@ class QuoteBreakdown(BaseModel):
     sheets_required: int
     part_count: int
     bundle_files: List[str]
+    material_cost_estimate: float = 0.0   # plywood you buy separately (NZD)
+    material_note: str = ""
 
 
 class QuoteRequest(BaseModel):
@@ -218,6 +224,12 @@ def calculate_quote(
         sheets_required=sheets_required,
         part_count=part_count,
         bundle_files=bundle_cfg["files"],
+        material_cost_estimate=round(MATERIAL_COST_PER_SHEET_NZD * max(1, sheets_required), 2),
+        material_note=(
+            f"Material ~${int(MATERIAL_COST_PER_SHEET_NZD * max(1, sheets_required))} NZD "
+            f"({max(1, sheets_required)} × 18mm plywood sheet at ~${int(MATERIAL_COST_PER_SHEET_NZD)}/sheet) "
+            "— you buy this separately at your local merchant."
+        ),
     )
 
 

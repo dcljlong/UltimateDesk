@@ -11,6 +11,7 @@ import Designer from './pages/Designer';
 import Library from './pages/Library';
 import Pricing from './pages/Pricing';
 import PaymentSuccess from './pages/PaymentSuccess';
+import SharedQuote from './pages/SharedQuote';
 
 // Protected Route Component
 const ProtectedRoute = ({ children }) => {
@@ -39,6 +40,7 @@ function AppRoutes() {
       <Route path="/designer" element={<Designer />} />
       <Route path="/pricing" element={<Pricing />} />
       <Route path="/payment/success" element={<PaymentSuccess />} />
+      <Route path="/quote/:slug" element={<SharedQuote />} />
       <Route 
         path="/library" 
         element={

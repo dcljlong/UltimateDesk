@@ -224,12 +224,13 @@ const Pricing = () => {
               <h2 className="text-xl font-bold">Per-Design Export</h2>
             </div>
             <div className="mb-1">
-              <span className="text-3xl font-black">from $14</span>
+              <span className="text-3xl font-black">from $22</span>
               <span className="text-[var(--text-secondary)]"> NZD</span>
             </div>
             <p className="text-xs text-[var(--text-secondary)] mb-4">
-              Small desk, 1 sheet, simple joints: <strong>$14</strong><br />
-              Large studio, 3 sheets, premium features: <strong>~$34–45</strong>
+              Small desk (1 sheet, simple): <strong>$22–$28</strong><br />
+              Medium desk (2 sheets, cable/monitor): <strong>$35–$45</strong><br />
+              Gaming / studio (3+ sheets, premium): <strong>$50–$75</strong>
             </p>
 
             <ul className="space-y-2 mb-6 text-sm">
