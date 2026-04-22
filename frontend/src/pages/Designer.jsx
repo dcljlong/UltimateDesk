@@ -30,15 +30,15 @@ import ExportDialog from '../components/ExportDialog';
 import axios from 'axios';
 
 const getApiUrl = () => {
-  // Use window.location.origin to ensure same protocol
+  const baseUrl = process.env.REACT_APP_BACKEND_URL || '';
+  if (baseUrl) {
+    return baseUrl + '/api';
+  }
   if (typeof window !== 'undefined' && window.location.protocol === 'https:') {
     return window.location.origin + '/api';
   }
-  const baseUrl = process.env.REACT_APP_BACKEND_URL || '';
-  return baseUrl + '/api';
+  return '/api';
 };
-const API = getApiUrl();
-
 const defaultParams = {
   width: 1800,
   depth: 800,
