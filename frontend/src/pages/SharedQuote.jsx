@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+﻿import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Cube, Download, ArrowRight, Eye, FileCode, FilePdf, Info, Star } from '@phosphor-icons/react';
@@ -20,30 +20,30 @@ const fileIconFor = (k) => {
   return Cube;
 };
 
-// Marketing-grade names mapped over backend presets (id must match preset id)
+// Honest preset labels mapped over backend presets (id must match preset id)
 const CURATED_META = {
   office: {
-    title: 'Minimal Office',
-    tagline: 'Clean cable routing · VESA mount · 1600mm',
+    title: 'Office Desk',
+    tagline: 'Clean layout · VESA option · 1600mm',
     accent: '#059669',
     bg: '#10231D',
   },
   gaming: {
-    title: 'Gaming Pro',
-    tagline: 'RGB channel · headset hook · 1800mm',
+    title: 'Gaming Desk',
+    tagline: 'Wide setup · headset hook · 1800mm',
     accent: '#FF3B30',
     bg: '#2A1214',
   },
   studio: {
-    title: 'Studio Beast',
-    tagline: '610mm mixer tray · pedal tilt · 2000mm',
+    title: 'Studio Desk',
+    tagline: 'Mixer-ready layout · 2000mm',
     accent: '#6366F1',
     bg: '#141726',
   },
 };
 const CURATED_ORDER = ['office', 'gaming', 'studio'];
 
-// Tiny inline SVG desk illustration — scales with card color
+// Tiny inline SVG desk illustration - scales with card color
 const DeskGlyph = ({ color = '#FF3B30' }) => (
   <svg viewBox="0 0 120 70" className="w-full h-full" aria-hidden="true">
     <rect x="6" y="20" width="108" height="8" rx="1" fill={color} opacity="0.9" />
@@ -111,7 +111,7 @@ export default function SharedQuote() {
   useEffect(() => {
     axios.get(`${API}/pricing/shared/${slug}`)
       .then(({ data }) => setDoc(data))
-      .catch(() => setError('Quote not found or link expired'));
+      .catch(() => setError('Quote not found or link has expired'));
   }, [slug]);
 
   // Fetch the 3 curated presets + their live DXF prices in parallel
@@ -152,7 +152,7 @@ export default function SharedQuote() {
     );
   }
   if (!doc) {
-    return <div className="min-h-screen flex items-center justify-center text-[var(--text-secondary)]">Loading quote…</div>;
+    return <div className="min-h-screen flex items-center justify-center text-[var(--text-secondary)]">Loading quote...</div>;
   }
 
   const q = doc.quote;
@@ -168,9 +168,9 @@ export default function SharedQuote() {
       >
         <header className="flex items-center gap-2 mb-8">
           <Cube size={28} weight="fill" className="text-[var(--primary)]" />
-          <span className="font-bold">UltimateDesk CNC Pro</span>
+          <span className="font-bold">UltimateDesk</span>
           <span className="ml-auto flex items-center gap-1 text-xs text-[var(--text-secondary)]">
-            <Eye size={12} /> {doc.views ?? 0} views
+            <Eye size={12} /> {doc.views - 0} views
           </span>
         </header>
 
@@ -244,10 +244,10 @@ export default function SharedQuote() {
         </div>
 
         <p className="text-center text-xs text-[var(--text-secondary)] mt-6">
-          Dimensions: {p.width}×{p.depth}×{p.height} mm · {q.sheets_required} sheet(s) · {q.part_count} parts
+          Dimensions: {p.width} × {p.depth} × {p.height} mm · {q.sheets_required} sheet(s) · {q.part_count} parts
         </p>
 
-        {/* ------ Other Popular Designs ------ */}
+        {/* ------ Explore other straight-frame desk presets ------ */}
         {curated.length > 0 && (
           <motion.section
             initial={{ opacity: 0, y: 10 }}
@@ -258,10 +258,10 @@ export default function SharedQuote() {
           >
             <div className="flex items-center gap-2 mb-1">
               <Star size={18} weight="fill" className="text-[var(--primary)]" />
-              <h2 className="text-xl font-bold">Other Popular Designs</h2>
+              <h2 className="text-xl font-bold">Explore other straight-frame desk presets</h2>
             </div>
             <p className="text-xs text-[var(--text-secondary)] mb-5">
-              No signup needed — just tap <strong>Build This</strong> and start designing.
+              Start from a proven preset, then adjust the size and options to suit your build.
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               {curated.map(({ preset, quote }) => (
@@ -279,3 +279,4 @@ export default function SharedQuote() {
     </div>
   );
 }
+

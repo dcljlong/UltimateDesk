@@ -98,20 +98,6 @@ const ConfigPanel = ({ params, onParamsUpdate, className = '' }) => {
               </div>
             </div>
 
-            <div>
-              <div className="flex justify-between mb-2">
-                <Label>Monitor Count</Label>
-                <span className="text-sm font-mono text-[var(--text-secondary)]">{params.monitor_count}</span>
-              </div>
-              <Slider
-                value={[params.monitor_count]}
-                onValueChange={([v]) => updateParam('monitor_count', v)}
-                min={1}
-                max={5}
-                step={1}
-                data-testid="slider-monitors"
-              />
-            </div>
           </div>
         </TabsContent>
 
@@ -122,19 +108,6 @@ const ConfigPanel = ({ params, onParamsUpdate, className = '' }) => {
               <Monitor size={16} /> Gaming Features
             </h4>
             
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Lamp size={18} className="text-[var(--primary)]" />
-                <Label htmlFor="rgb">RGB Channels</Label>
-              </div>
-              <Switch
-                id="rgb"
-                checked={params.has_rgb_channels}
-                onCheckedChange={(v) => updateParam('has_rgb_channels', v)}
-                data-testid="switch-rgb"
-              />
-            </div>
-
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Headphones size={18} className="text-[var(--primary)]" />
@@ -201,18 +174,6 @@ const ConfigPanel = ({ params, onParamsUpdate, className = '' }) => {
               </motion.div>
             )}
 
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Sliders size={18} className="text-[var(--primary)]" />
-                <Label htmlFor="pedal">Pedal Tilt</Label>
-              </div>
-              <Switch
-                id="pedal"
-                checked={params.has_pedal_tilt}
-                onCheckedChange={(v) => updateParam('has_pedal_tilt', v)}
-                data-testid="switch-pedal"
-              />
-            </div>
           </div>
 
           <div className="neu-surface p-4 rounded-xl space-y-4">
@@ -268,39 +229,20 @@ const ConfigPanel = ({ params, onParamsUpdate, className = '' }) => {
               </Select>
             </div>
 
-            <div>
-              <Label className="mb-2 block">Leg Style</Label>
-              <Select
-                value={params.leg_style}
-                onValueChange={(v) => updateParam('leg_style', v)}
-              >
-                <SelectTrigger className="neu-surface" data-testid="select-leg-style">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="standard">Standard</SelectItem>
-                  <SelectItem value="angular">Angular</SelectItem>
-                  <SelectItem value="solid">Solid Panel</SelectItem>
-                  <SelectItem value="trestle">Trestle</SelectItem>
-                </SelectContent>
-              </Select>
+            <div className="neu-surface p-4 rounded-xl">
+              <Label className="mb-2 block">Build System</Label>
+              <div className="text-sm text-[var(--text-secondary)] space-y-1">
+                <p className="font-mono">Straight frame desk</p>
+                <p className="text-xs">4 post frame, rails, modesty panel and optional add-ons.</p>
+              </div>
             </div>
 
-            <div>
-              <Label className="mb-2 block">Joint Type</Label>
-              <Select
-                value={params.joint_type}
-                onValueChange={(v) => updateParam('joint_type', v)}
-              >
-                <SelectTrigger className="neu-surface" data-testid="select-joint-type">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="finger">Finger Joint</SelectItem>
-                  <SelectItem value="dovetail">Dovetail</SelectItem>
-                  <SelectItem value="box">Box Joint</SelectItem>
-                </SelectContent>
-              </Select>
+            <div className="neu-surface p-4 rounded-xl">
+              <Label className="mb-2 block">Joinery</Label>
+              <div className="text-sm text-[var(--text-secondary)] space-y-1">
+                <p className="font-mono">Base CNC pack</p>
+                <p className="text-xs">Joinery options will come back when they affect real export geometry.</p>
+              </div>
             </div>
 
             <div className="neu-surface p-4 rounded-xl">

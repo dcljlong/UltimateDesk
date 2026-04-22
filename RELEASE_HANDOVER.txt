@@ -1,0 +1,42 @@
+﻿ULTIMATEDESK RELEASE HANDOVER
+
+Current state
+- Straight-frame commercial release-clean build
+- Customer-facing branding cleaned
+- Shared quote cleaned
+- Shared quote PDF cleaned
+- Export dialog cleaned
+- Payment success cleaned
+- Landing and pricing aligned
+- Emergent badge removed
+- Frontend build passes with no warnings
+
+Stable backups
+- D:\Desk Ai Designer\_stable_backups\app_work_release_clean_20260422-220617
+- D:\Desk Ai Designer\_stable_backups\app_work_release_clean_warning_free_20260422-221325
+
+Verified workflow truth
+- designer inputs -> preview -> nesting -> toolpath preview -> export files
+
+Proven feature truth
+- headset hook works
+- GPU tray works
+- VESA works
+- mixer tray works
+- base desk exports correctly
+- combined pack exports correctly
+
+Next priority options
+1. Deploy this clean state
+2. Run final live/browser proof on deployed version
+3. Tighten backend/internal legacy branding that is not customer-facing
+4. Prepare launch assets/screenshots/copy
+
+Run commands
+Backend:
+- load .env into session
+- uvicorn server:app --reload --host 127.0.0.1 --port 8000
+
+Frontend:
+- npm start
+- npm run build

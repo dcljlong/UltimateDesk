@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+﻿import React, { useState, useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import {
   Download,
@@ -30,11 +30,12 @@ const getApiUrl = () => {
   return baseUrl + '/api';
 };
 const API = getApiUrl();
+const API_ORIGIN = API.replace(/\/api$/, '');
 
 const FILE_META = {
   dxf:   { Icon: FileCode, label: 'DXF',    color: 'text-blue-500',  hint: 'CAD/CAM geometry' },
   svg:   { Icon: FileCode, label: 'SVG',    color: 'text-purple-500',hint: 'Vector cut layout' },
-  gcode: { Icon: Cube,     label: 'G-Code', color: 'text-green-500', hint: 'CNC instructions' },
+  gcode: { Icon: Cube,     label: 'NC',     color: 'text-green-500', hint: 'Machine file' },
   pdf:   { Icon: FilePdf,  label: 'PDF',    color: 'text-red-500',   hint: 'Cut-sheet reference' },
 };
 
@@ -71,7 +72,7 @@ const ExportDialog = ({ isOpen, onClose, params, designName }) => {
     }
   }, [isOpen, isAuthenticated]);
 
-  // Live quote — debounced on params / bundle / commercial change
+  // Live quote - debounced on params / bundle / commercial change
   useEffect(() => {
     if (!isOpen) return;
     const handle = setTimeout(async () => {
@@ -149,7 +150,9 @@ const ExportDialog = ({ isOpen, onClose, params, designName }) => {
 
   const handleDownload = (fileType) => {
     if (exportResult?.files?.[fileType]) {
-      window.open(`${window.location.origin}${exportResult.files[fileType]}`, '_blank');
+      const filePath = exportResult.files[fileType];
+      const fileUrl = filePath.startsWith('http') ? filePath : `${API_ORIGIN}${filePath}`;
+      window.open(fileUrl, '_blank');
     }
   };
 
@@ -173,7 +176,7 @@ const ExportDialog = ({ isOpen, onClose, params, designName }) => {
       });
       // Always present the link on the public frontend host the user is actually on
       const fullUrl = `${window.location.origin}/quote/${data.slug}`;
-      const pdfUrl = `${window.location.origin}/api/pricing/shared/${data.slug}/pdf`;
+      const pdfUrl = `${API_ORIGIN}/api/pricing/shared/${data.slug}/pdf`;
       setShareLink({ url: fullUrl, pdf_url: pdfUrl, slug: data.slug });
     } catch (e) {
       setError(e.response?.data?.detail || 'Failed to create share link');
@@ -193,9 +196,9 @@ const ExportDialog = ({ isOpen, onClose, params, designName }) => {
     }
   };
 
-  const bundles = catalog?.bundles || [];
+  const bundles = useMemo(() => catalog?.bundles || [], [catalog]);
   const includedFiles = useMemo(() => {
-    const b = bundles.find(x => x.key === bundle);
+    const b = bundles.find((x) => x.key === bundle);
     return b?.files || ['dxf'];
   }, [bundles, bundle]);
 
@@ -209,7 +212,7 @@ const ExportDialog = ({ isOpen, onClose, params, designName }) => {
               <Download size={24} className="text-[var(--primary)]" />
               Export CNC Files
             </DialogTitle>
-            <DialogDescription>Sign in to export production-ready CNC files.</DialogDescription>
+            <DialogDescription>Sign in to buy and download DXF, SVG, PDF and NC reference file bundles.</DialogDescription>
           </DialogHeader>
           <div className="py-4 text-center">
             <Button
@@ -234,7 +237,7 @@ const ExportDialog = ({ isOpen, onClose, params, designName }) => {
             Export CNC Files
           </DialogTitle>
           <DialogDescription>
-            Pick a bundle. Your price scales with sheet count, parts, and features — no surprises.
+            Choose a bundle, review your live quote, and generate reference files for CAM verification.
           </DialogDescription>
         </DialogHeader>
 
@@ -243,7 +246,7 @@ const ExportDialog = ({ isOpen, onClose, params, designName }) => {
           <div className="py-4" data-testid="export-success-section">
             <div className="flex items-center gap-2 text-green-500 mb-4">
               <CheckCircle size={24} weight="fill" />
-              <span className="font-bold">Files generated — ready to download</span>
+              <span className="font-bold">Files generated - ready to download</span>
             </div>
             <div className="space-y-2 mb-4">
               {Object.keys(exportResult.files || {}).map((ft) => {
@@ -394,13 +397,13 @@ const ExportDialog = ({ isOpen, onClose, params, designName }) => {
                   )}
                 </>
               ) : (
-                <p className="text-sm text-[var(--text-secondary)]">Calculating…</p>
+                <p className="text-sm text-[var(--text-secondary)]">Calculating...</p>
               )}
             </div>
 
             {/* Action area */}
             {isChecking ? (
-              <div className="text-center py-4 text-[var(--text-secondary)]">Checking access…</div>
+              <div className="text-center py-4 text-[var(--text-secondary)]">Checking access...</div>
             ) : isPro ? (
               <Button
                 onClick={handleGenerateExport}
@@ -408,7 +411,7 @@ const ExportDialog = ({ isOpen, onClose, params, designName }) => {
                 className="w-full btn-primary"
                 data-testid="generate-export-btn"
               >
-                {isGenerating ? 'Generating files…' : (
+                {isGenerating ? 'Generating files...' : (
                   <><Crown size={16} className="mr-2" /> Generate files (Pro, included)</>
                 )}
               </Button>
@@ -419,7 +422,7 @@ const ExportDialog = ({ isOpen, onClose, params, designName }) => {
                 className="w-full btn-primary"
                 data-testid="use-credit-btn"
               >
-                {isGenerating ? 'Generating files…' : 'Use paid credit to generate files'}
+                {isGenerating ? 'Generating files...' : 'Use paid credit to generate files'}
               </Button>
             ) : (
               <Button
@@ -429,7 +432,7 @@ const ExportDialog = ({ isOpen, onClose, params, designName }) => {
                 data-testid="checkout-btn"
               >
                 {isCheckingOut ? (
-                  <>Redirecting to checkout…</>
+                  <>Redirecting to checkout...</>
                 ) : (
                   <>
                     <Lock size={16} className="mr-2" />
@@ -457,9 +460,9 @@ const ExportDialog = ({ isOpen, onClose, params, designName }) => {
                   data-testid="share-quote-btn"
                 >
                   {isSharing ? (
-                    <>Preparing link…</>
+                    <>Preparing link...</>
                   ) : (
-                    <><Share size={16} className="mr-2" /> Share this quote (send to your partner, boss…)</>
+                    <><Share size={16} className="mr-2" /> Share this quote</>
                   )}
                 </Button>
               ) : (
@@ -510,7 +513,7 @@ const ExportDialog = ({ isOpen, onClose, params, designName }) => {
             )}
 
             <p className="text-xs text-center text-[var(--text-secondary)]">
-              Includes: {includedFiles.map((f) => (FILE_META[f]?.label || f)).join(' + ')} · Files expire 24h after generation · Test-mode payments
+              Includes: {includedFiles.map((f) => (FILE_META[f]?.label || f)).join(' + ')} · Files expire 24h after generation · Verify in CAM before cutting
             </p>
           </div>
         )}

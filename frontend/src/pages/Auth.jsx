@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Cube, Eye, EyeSlash, ArrowLeft } from '@phosphor-icons/react';
@@ -87,7 +87,7 @@ const Auth = () => {
             <Cube size={40} weight="fill" className="text-[var(--primary)]" />
             <div>
               <h1 className="text-2xl font-black tracking-tight">UltimateDesk</h1>
-              <span className="text-xs text-[var(--text-secondary)]">CNC Pro</span>
+              <span className="text-xs text-[var(--text-secondary)]">Straight Frame</span>
             </div>
           </div>
 
@@ -140,7 +140,7 @@ const Auth = () => {
                   id="password"
                   name="password"
                   type={showPassword ? 'text' : 'password'}
-                  placeholder="••••••••"
+                  placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
                   value={formData.password}
                   onChange={handleChange}
                   required
@@ -191,3 +191,4 @@ const Auth = () => {
 };
 
 export default Auth;
+

@@ -1,20 +1,21 @@
-import React, { useState } from 'react';
+﻿import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { 
-  Cube, 
-  Check, 
-  X, 
-  Sun, 
+import {
+  Cube,
+  Check,
+  X,
+  Sun,
   Moon,
   CaretLeft,
   Crown,
-  Rocket,
   Lightning,
   Download,
   FileCode,
   FilePdf,
-  Cube as CubeIcon
+  Cube as CubeIcon,
+  Package,
+  TreeStructure
 } from '@phosphor-icons/react';
 import { Button } from '../components/ui/button';
 import { useAuth } from '../context/AuthContext';
@@ -34,7 +35,6 @@ const Pricing = () => {
   const navigate = useNavigate();
   const { isAuthenticated, isPro } = useAuth();
   const { theme, toggleTheme } = useTheme();
-  const [isLoadingSingle, setIsLoadingSingle] = useState(false);
   const [isLoadingPro, setIsLoadingPro] = useState(false);
 
   const handlePurchaseSingle = () => {
@@ -54,7 +54,7 @@ const Pricing = () => {
         { origin_url: window.location.origin },
         { withCredentials: true }
       );
-      
+
       if (data.url) {
         window.location.href = data.url;
       }
@@ -67,48 +67,46 @@ const Pricing = () => {
   };
 
   const freeFeatures = [
-    { text: 'Unlimited AI desk design conversations', included: true },
-    { text: 'Real-time isometric preview', included: true },
-    { text: 'All desk presets (Gaming, Studio, Office)', included: true },
-    { text: 'Explode view & dimensions', included: true },
-    { text: 'Sheet nesting preview', included: true },
-    { text: 'G-Code preview (first 3 parts)', included: true },
+    { text: 'Straight-frame desk builder', included: true },
+    { text: 'Export-aligned 3D preview', included: true },
+    { text: 'Live nesting layout', included: true },
+    { text: 'Reference toolpath preview', included: true },
     { text: 'Save unlimited designs', included: true },
-    { text: 'Download DXF files', included: false },
-    { text: 'Download full G-Code', included: false },
-    { text: 'PDF cutting sheets', included: false },
+    { text: 'Start from presets', included: true },
+    { text: 'Proven add-ons: cable tray, mixer tray, hook, VESA', included: true },
+    { text: 'DXF, SVG, PDF and NC downloads', included: false },
+    { text: 'Paid export bundles', included: false },
+    { text: 'Unlimited paid exports', included: false },
   ];
 
   const singleFeatures = [
     { text: 'Everything in Free', included: true },
-    { text: 'Pay per design — price scales with:', included: true },
-    { text: '→ Material sheets required', included: true, indent: true },
-    { text: '→ Part count & joint complexity', included: true, indent: true },
-    { text: '→ Premium features enabled', included: true, indent: true },
-    { text: 'Pick your bundle (DXF → Full Pack)', included: true },
+    { text: 'Open designer and see live price before checkout', included: true },
+    { text: 'Choose your bundle per design', included: true },
+    { text: 'DXF only through full pack options', included: true },
+    { text: 'DXF, SVG, PDF and NC when included in bundle', included: true },
     { text: 'Optional commercial-use license', included: true },
-    { text: 'Transparent live quote before checkout', included: true },
+    { text: 'Good for one-off builds or testing designs', included: true },
     { text: 'Files valid for 24 hours', included: true },
   ];
 
   const proFeatures = [
     { text: 'Everything in Free', included: true },
-    { text: 'Unlimited export packages', included: true },
-    { text: 'DXF, G-Code, PDF for every design', included: true },
-    { text: 'Priority file generation', included: true },
-    { text: 'Files never expire', included: true },
-    { text: 'Email support', included: true },
-    { text: 'Early access to new features', included: true },
+    { text: 'Generate export bundles for every design while subscribed', included: true },
+    { text: 'DXF, SVG, PDF and NC for every design', included: true },
+    { text: 'No per-design checkout for subscribed accounts', included: true },
+    { text: 'Generate export bundles for every design while subscribed', included: true },
+    { text: 'No per-design checkout for subscribed accounts', included: true },
+    { text: 'Best for repeat makers and commercial workflows', included: true },
   ];
 
   return (
     <div className="min-h-screen bg-[var(--background)]">
-      {/* Header */}
       <header className="h-16 border-b border-[var(--border)] px-4 flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <Button 
-            variant="ghost" 
-            size="icon" 
+          <Button
+            variant="ghost"
+            size="icon"
             onClick={() => navigate('/')}
             data-testid="nav-home-btn"
           >
@@ -120,8 +118,8 @@ const Pricing = () => {
           </div>
         </div>
 
-        <Button 
-          variant="ghost" 
+        <Button
+          variant="ghost"
           size="icon"
           onClick={toggleTheme}
           data-testid="theme-toggle"
@@ -130,45 +128,54 @@ const Pricing = () => {
         </Button>
       </header>
 
-      {/* Content */}
       <main className="max-w-6xl mx-auto px-4 py-12">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           className="text-center mb-12"
         >
+          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full neu-surface mb-6">
+            <Package size={16} className="text-[var(--primary)]" />
+            <span className="text-sm font-medium">Straight-frame commercial desk builder</span>
+          </div>
+
           <h1 className="text-4xl sm:text-5xl font-black tracking-tighter mb-4">
-            Design Free. Pay Only to Cut.
+            Configure Free.
+            <br />
+            <span className="text-[var(--primary)]">Pay When You Export.</span>
           </h1>
-          <p className="text-lg text-[var(--text-secondary)] max-w-2xl mx-auto">
-            Create unlimited designs for free. Export production-ready CNC files when you're ready to build.
+
+          <p className="text-lg text-[var(--text-secondary)] max-w-3xl mx-auto">
+            Build a proven straight-frame desk, review live nesting and reference toolpath,
+            then choose the export option that fits your job.
           </p>
         </motion.div>
 
-        {/* Export file types showcase */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          className="flex justify-center gap-6 mb-12"
+          className="flex flex-wrap justify-center gap-4 mb-12"
         >
           <div className="flex items-center gap-2 px-4 py-2 neu-surface rounded-lg">
-            <FileCode size={24} className="text-blue-500" />
-            <span className="font-mono text-sm">DXF</span>
+            <FileCode size={22} className="text-blue-500" />
+            <span className="font-mono text-sm">DXF / SVG</span>
           </div>
           <div className="flex items-center gap-2 px-4 py-2 neu-surface rounded-lg">
-            <CubeIcon size={24} className="text-green-500" />
-            <span className="font-mono text-sm">G-Code</span>
+            <CubeIcon size={22} className="text-green-500" />
+            <span className="font-mono text-sm">NC</span>
           </div>
           <div className="flex items-center gap-2 px-4 py-2 neu-surface rounded-lg">
-            <FilePdf size={24} className="text-red-500" />
-            <span className="font-mono text-sm">PDF</span>
+            <FilePdf size={22} className="text-red-500" />
+            <span className="font-mono text-sm">PDF Cut Sheet</span>
+          </div>
+          <div className="flex items-center gap-2 px-4 py-2 neu-surface rounded-lg">
+            <TreeStructure size={22} className="text-[var(--primary)]" />
+            <span className="font-mono text-sm">Live Nesting</span>
           </div>
         </motion.div>
 
-        {/* Pricing Cards */}
         <div className="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto">
-          {/* Free Tier */}
           <motion.div
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
@@ -176,15 +183,15 @@ const Pricing = () => {
             className="neu-surface p-6 rounded-xl"
           >
             <div className="flex items-center gap-2 mb-4">
-              <Rocket size={24} className="text-[var(--text-secondary)]" />
-              <h2 className="text-xl font-bold">Free</h2>
+              <Package size={24} className="text-[var(--text-secondary)]" />
+              <h2 className="text-xl font-bold">Free Builder</h2>
             </div>
             <div className="mb-4">
               <span className="text-3xl font-black">$0</span>
-              <span className="text-[var(--text-secondary)]">/forever</span>
+              <span className="text-[var(--text-secondary)]"> / forever</span>
             </div>
             <p className="text-[var(--text-secondary)] text-sm mb-6">
-              Design and preview unlimited desks
+              Configure, preview, save and review build layout inside the app.
             </p>
 
             <ul className="space-y-2 mb-6 text-sm">
@@ -202,17 +209,16 @@ const Pricing = () => {
               ))}
             </ul>
 
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               className="w-full"
               onClick={() => navigate('/designer')}
               data-testid="start-free-btn"
             >
-              Start Designing
+              Open Builder
             </Button>
           </motion.div>
 
-          {/* Per-design pricing */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -228,14 +234,12 @@ const Pricing = () => {
               <span className="text-[var(--text-secondary)]"> NZD</span>
             </div>
             <p className="text-xs text-[var(--text-secondary)] mb-4">
-              Small desk (1 sheet, simple): <strong>$22–$28</strong><br />
-              Medium desk (2 sheets, cable/monitor): <strong>$35–$45</strong><br />
-              Gaming / studio (3+ sheets, premium): <strong>$50–$75</strong>
+              Best for one-off jobs, design testing, and occasional builds.
             </p>
 
             <ul className="space-y-2 mb-6 text-sm">
               {singleFeatures.map((feature, idx) => (
-                <li key={idx} className={`flex items-start gap-2 ${feature.indent ? 'ml-4' : ''}`}>
+                <li key={idx} className="flex items-start gap-2">
                   <Check size={16} className="text-[var(--success)] mt-0.5 flex-shrink-0" />
                   <span>{feature.text}</span>
                 </li>
@@ -247,11 +251,10 @@ const Pricing = () => {
               onClick={handlePurchaseSingle}
               data-testid="buy-single-btn"
             >
-              Design & See My Price
+              Open Designer & See Price
             </Button>
           </motion.div>
 
-          {/* Pro Tier */}
           <motion.div
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
@@ -271,10 +274,10 @@ const Pricing = () => {
             </div>
             <div className="mb-4">
               <span className="text-3xl font-black">$19</span>
-              <span className="text-[var(--text-secondary)]"> NZD/month</span>
+              <span className="text-[var(--text-secondary)]"> NZD / month</span>
             </div>
             <p className="text-[var(--text-secondary)] text-sm mb-6">
-              Unlimited exports for serious makers
+              Unlimited exports for repeat makers and commercial workflows.
             </p>
 
             <ul className="space-y-2 mb-6 text-sm">
@@ -287,15 +290,12 @@ const Pricing = () => {
             </ul>
 
             {isPro ? (
-              <Button 
-                className="w-full btn-secondary"
-                disabled
-              >
+              <Button className="w-full btn-secondary" disabled>
                 <Check size={18} className="mr-2" />
                 You're Pro!
               </Button>
             ) : (
-              <Button 
+              <Button
                 className="w-full btn-primary"
                 onClick={handlePurchasePro}
                 disabled={isLoadingPro}
@@ -307,7 +307,6 @@ const Pricing = () => {
           </motion.div>
         </div>
 
-        {/* Disclaimer */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -316,28 +315,14 @@ const Pricing = () => {
         >
           <div className="neu-surface p-6 rounded-xl">
             <h3 className="font-bold mb-2 flex items-center gap-2">
-              <span className="text-yellow-500">⚠️</span>
-              Important Safety Note
+              <span className="text-yellow-500">⚠</span>
+              Important safety note
             </h3>
             <p className="text-sm text-[var(--text-secondary)]">
-              Export files are high-quality <strong>reference files</strong>. You must verify all toolpaths in your 
-              CAM software (VCarve, Fusion 360, etc.) before cutting. UltimateDesk provides geometry-accurate 
-              files but is not responsible for machine-specific settings, material variations, or toolpath validation.
+              Exports are reference files for real-world CNC workflows. Always verify dimensions,
+              nesting, tooling and CAM toolpaths before cutting material.
             </p>
           </div>
-        </motion.div>
-
-        {/* FAQ */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5 }}
-          className="mt-12 text-center"
-        >
-          <h3 className="text-xl font-bold mb-4">Questions?</h3>
-          <p className="text-[var(--text-secondary)]">
-            Email us at <a href="mailto:support@ultimatedesk.co.nz" className="text-[var(--primary)] hover:underline">support@ultimatedesk.co.nz</a>
-          </p>
         </motion.div>
       </main>
     </div>

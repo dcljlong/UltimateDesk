@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+﻿import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { 
   Cube, 
@@ -8,7 +8,6 @@ import {
   Sun, 
   Moon, 
   List,
-  ChatCircle,
   Sliders,
   TreeStructure,
   Code,
@@ -25,7 +24,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import DeskPreview3D from '../components/DeskPreview3D';
-import ChatDesigner from '../components/ChatDesigner';
 import ConfigPanel from '../components/ConfigPanel';
 import NestingViewer from '../components/NestingViewer';
 import ExportDialog from '../components/ExportDialog';
@@ -63,6 +61,7 @@ const defaultParams = {
 
 const Designer = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
   const { user, isAuthenticated, isPro, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
@@ -73,18 +72,55 @@ const Designer = () => {
   const [cncOutput, setCncOutput] = useState(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [activePanel, setActivePanel] = useState('chat');
+  const [activePanel, setActivePanel] = useState('config');
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [livePrice, setLivePrice] = useState(null);
 
-  // Load preset if specified in URL
+  const loadDesign = async (designId) => {
+    try {
+      const { data } = await axios.get(`${API}/designs/${designId}`, { withCredentials: true });
+      setParams(data.params);
+      setDesignName(data.name || 'My Custom Desk');
+      setCurrentDesignId(data.id);
+      setCncOutput(null);
+      localStorage.setItem('ultimatedesk_current_design_id', data.id);
+    } catch (error) {
+      console.error('Failed to load design:', error);
+    }
+  };
+
+  // Load preset or saved design on entry
   useEffect(() => {
     const preset = searchParams.get('preset');
+    const designId =
+      searchParams.get('designId') ||
+      searchParams.get('design') ||
+      location.state?.designId ||
+      location.state?.design?.id ||
+      localStorage.getItem('ultimatedesk_current_design_id');
+
     if (preset) {
       loadPreset(preset);
+      return;
     }
-  }, [searchParams]);
+
+    if (location.state?.design?.params) {
+      const design = location.state.design;
+      setParams(design.params);
+      setDesignName(design.name || 'My Custom Desk');
+      setCurrentDesignId(design.id || null);
+      setCncOutput(null);
+      if (design.id) {
+        localStorage.setItem('ultimatedesk_current_design_id', design.id);
+      }
+      return;
+    }
+
+    if (designId) {
+      loadDesign(designId);
+    }
+  }, [searchParams, location.state]);
 
   const loadPreset = async (presetId) => {
     try {
@@ -93,6 +129,8 @@ const Designer = () => {
       if (preset) {
         setParams(preset.params);
         setDesignName(`${preset.name} - Custom`);
+        setCurrentDesignId(null);
+        setCncOutput(null);
       }
     } catch (error) {
       console.error('Failed to load preset:', error);
@@ -101,20 +139,26 @@ const Designer = () => {
 
   const handleParamsUpdate = useCallback((newParams) => {
     setParams(newParams);
-    setCncOutput(null); // Clear CNC output when params change
   }, []);
 
-  const generateCNC = async () => {
+  const generateCNC = useCallback(async (liveParams = params) => {
     setIsGenerating(true);
     try {
-      const { data } = await axios.post(`${API}/cnc/generate`, params);
+      const { data } = await axios.post(`${API}/cnc/generate`, liveParams);
       setCncOutput(data);
     } catch (error) {
       console.error('CNC generation failed:', error);
     } finally {
       setIsGenerating(false);
     }
-  };
+  }, [params]);
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      generateCNC(params);
+    }, 250);
+    return () => clearTimeout(t);
+  }, [params, generateCNC]);
 
   const saveDesign = async () => {
     if (!isAuthenticated) {
@@ -130,6 +174,7 @@ const Designer = () => {
           { name: designName, params },
           { withCredentials: true }
         );
+        localStorage.setItem('ultimatedesk_current_design_id', currentDesignId);
       } else {
         const { data } = await axios.post(
           `${API}/designs`,
@@ -137,6 +182,7 @@ const Designer = () => {
           { withCredentials: true }
         );
         setCurrentDesignId(data.id);
+        localStorage.setItem('ultimatedesk_current_design_id', data.id);
       }
       setSaveDialogOpen(false);
     } catch (error) {
@@ -150,7 +196,7 @@ const Designer = () => {
     setExportDialogOpen(true);
   };
 
-  // Live price pill — refreshes when design changes
+  // Live price pill â€” refreshes when design changes
   useEffect(() => {
     const t = setTimeout(async () => {
       try {
@@ -282,30 +328,19 @@ const Designer = () => {
       <div className="flex-1 flex overflow-hidden">
         {/* Desktop Sidebar */}
         <aside className="hidden lg:flex w-80 flex-col border-r border-[var(--border)]">
-          <Tabs value={activePanel} onValueChange={setActivePanel} className="flex-1 flex flex-col">
-            <TabsList className="grid grid-cols-2 m-4">
-              <TabsTrigger value="chat" className="gap-1" data-testid="panel-chat-btn">
-                <ChatCircle size={16} /> Chat
-              </TabsTrigger>
-              <TabsTrigger value="config" className="gap-1" data-testid="panel-config-btn">
-                <Sliders size={16} /> Config
-              </TabsTrigger>
-            </TabsList>
-            
-            <TabsContent value="chat" className="flex-1 m-0 overflow-hidden">
-              <ChatDesigner params={params} onParamsUpdate={handleParamsUpdate} />
-            </TabsContent>
-            
-            <TabsContent value="config" className="flex-1 m-0 p-4 overflow-auto">
-              <ConfigPanel params={params} onParamsUpdate={handleParamsUpdate} />
-            </TabsContent>
-          </Tabs>
+          <div className="p-4 border-b border-[var(--border)]">
+            <div className="text-sm font-semibold">Desk Configuration</div>
+            <div className="text-xs text-[var(--text-secondary)]">Straight-frame commercial desk builder</div>
+          </div>
+          <div className="flex-1 p-4 overflow-auto">
+            <ConfigPanel params={params} onParamsUpdate={handleParamsUpdate} />
+          </div>
         </aside>
 
         {/* Mobile Panel Sheet */}
         <Sheet>
           <SheetTrigger asChild>
-            <Button 
+            <Button
               className="lg:hidden fixed bottom-4 left-4 z-50 rounded-full w-14 h-14 shadow-lg btn-primary"
               data-testid="mobile-panel-trigger"
             >
@@ -313,24 +348,13 @@ const Designer = () => {
             </Button>
           </SheetTrigger>
           <SheetContent side="left" className="w-full sm:w-96 p-0">
-            <Tabs value={activePanel} onValueChange={setActivePanel} className="flex flex-col h-full">
-              <TabsList className="grid grid-cols-2 m-4">
-                <TabsTrigger value="chat" className="gap-1">
-                  <ChatCircle size={16} /> Chat
-                </TabsTrigger>
-                <TabsTrigger value="config" className="gap-1">
-                  <Sliders size={16} /> Config
-                </TabsTrigger>
-              </TabsList>
-              
-              <TabsContent value="chat" className="flex-1 m-0 overflow-hidden">
-                <ChatDesigner params={params} onParamsUpdate={handleParamsUpdate} />
-              </TabsContent>
-              
-              <TabsContent value="config" className="flex-1 m-0 p-4 overflow-auto">
-                <ConfigPanel params={params} onParamsUpdate={handleParamsUpdate} />
-              </TabsContent>
-            </Tabs>
+            <div className="p-4 border-b border-[var(--border)]">
+              <div className="text-sm font-semibold">Desk Configuration</div>
+              <div className="text-xs text-[var(--text-secondary)]">Straight-frame commercial desk builder</div>
+            </div>
+            <div className="flex-1 p-4 overflow-auto">
+              <ConfigPanel params={params} onParamsUpdate={handleParamsUpdate} />
+            </div>
           </SheetContent>
         </Sheet>
 
@@ -346,33 +370,20 @@ const Designer = () => {
                   <TreeStructure size={16} /> Nesting
                 </TabsTrigger>
                 <TabsTrigger value="gcode" className="gap-1" data-testid="tab-gcode">
-                  <Code size={16} /> G-Code
+                  <Code size={16} /> Toolpath
                 </TabsTrigger>
               </TabsList>
               
-              <Button
-                onClick={generateCNC}
-                disabled={isGenerating}
-                className="btn-primary gap-2"
-                data-testid="generate-cnc-btn"
+              <div
+                className="px-3 py-2 rounded-lg border border-[var(--border)] bg-[var(--surface)] text-xs font-mono"
+                data-testid="generate-cnc-status"
               >
-                {isGenerating ? (
-                  <>
-                    <motion.div
-                      animate={{ rotate: 360 }}
-                      transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
-                    >
-                      <TreeStructure size={18} />
-                    </motion.div>
-                    Generating...
-                  </>
-                ) : (
-                  <>
-                    <TreeStructure size={18} />
-                    Generate CNC
-                  </>
-                )}
-              </Button>
+                {isGenerating
+                  ? 'Updating layout...'
+                  : cncOutput?.nesting
+                    ? `${cncOutput.nesting.sheets_required} sheet / ${cncOutput.nesting.parts.length} placed parts`
+                    : 'Layout pending...'}
+              </div>
             </div>
             
             <TabsContent value="preview" className="flex-1 m-0">
@@ -387,33 +398,28 @@ const Designer = () => {
               {cncOutput?.gcode_preview ? (
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <h3 className="font-bold">G-Code Preview</h3>
-                    {isPro && (
-                      <Button variant="outline" className="gap-2" data-testid="download-gcode-btn">
-                        <Download size={16} />
-                        Download Full G-Code
-                      </Button>
-                    )}
+                    <div><h3 className="font-bold">Reference G-Code Preview</h3><p className="text-sm text-[var(--text-secondary)]">Uses the same current nesting layout shown in this design.</p></div>
+                    <div className="text-xs text-[var(--text-secondary)] border border-[var(--border)] rounded-lg px-3 py-2">
+                      Download CNC files from <span className="font-semibold">Export</span>
+                    </div>
                   </div>
                   <div className="terminal-block max-h-[500px] overflow-auto">
                     <pre className="text-sm text-green-400">{cncOutput.gcode_preview}</pre>
                   </div>
-                  {!isPro && (
-                    <div className="neu-surface p-4 rounded-xl flex items-center justify-between">
-                      <div>
-                        <p className="font-bold">Upgrade to Pro</p>
-                        <p className="text-sm text-[var(--text-secondary)]">Download full G-Code and DXF files</p>
-                      </div>
-                      <Button onClick={() => navigate('/pricing')} className="btn-primary gap-2">
-                        <Crown size={16} />
-                        Upgrade
-                      </Button>
+                  <div className="neu-surface p-4 rounded-xl flex items-center justify-between">
+                    <div>
+                      <p className="font-bold">Reference toolpath only</p>
+                      <p className="text-sm text-[var(--text-secondary)]">Use Export for the actual DXF, SVG, PDF and NC files.</p>
                     </div>
-                  )}
+                    <Button onClick={handleExport} className="btn-primary gap-2">
+                      <Download size={16} />
+                      Open Export
+                    </Button>
+                  </div>
                 </div>
               ) : (
                 <div className="flex items-center justify-center h-full text-[var(--text-secondary)]">
-                  <p>Generate CNC output to view G-Code</p>
+                  <p>Toolpath preview is updating...</p>
                 </div>
               )}
             </TabsContent>

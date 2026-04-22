@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+﻿import React, { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { 
@@ -110,9 +110,9 @@ const PaymentSuccess = () => {
             >
               <CheckCircle size={40} weight="fill" className="text-white" />
             </motion.div>
-            <h1 className="text-2xl font-bold mb-2">Welcome to Pro!</h1>
+            <h1 className="text-2xl font-bold mb-2">Payment Successful</h1>
             <p className="text-[var(--text-secondary)] mb-6">
-              Your payment was successful. You now have full access to all Pro features including G-Code exports, DXF downloads, and more.
+              Your payment was successful. Your account is ready to generate and download the export bundles included with your purchase.
             </p>
             <div className="space-y-3">
               <Button 
@@ -120,7 +120,7 @@ const PaymentSuccess = () => {
                 className="w-full btn-primary gap-2"
                 data-testid="go-to-designer-btn"
               >
-                Start Designing <ArrowRight size={18} />
+                Open Designer <ArrowRight size={18} />
               </Button>
               <Button 
                 variant="outline"
@@ -128,7 +128,7 @@ const PaymentSuccess = () => {
                 className="w-full"
                 data-testid="go-to-library-btn"
               >
-                View My Designs
+                View Saved Designs
               </Button>
             </div>
           </>

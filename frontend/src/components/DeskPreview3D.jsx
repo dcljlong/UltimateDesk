@@ -1,6 +1,15 @@
-import React, { useRef, useState, useEffect } from 'react';
+﻿import React, { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import { ArrowsOutSimple, Ruler, Cube, Monitor, Headphones, Lamp, MusicNote, Lock } from '@phosphor-icons/react';
+import {
+  ArrowsOutSimple,
+  Cube,
+  Headphones,
+  Lamp,
+  Lock,
+  Monitor,
+  MusicNote,
+  Ruler,
+} from '@phosphor-icons/react';
 import { useAuth } from '../context/AuthContext';
 
 const DeskPreview3D = ({ params, className = '' }) => {
@@ -9,380 +18,571 @@ const DeskPreview3D = ({ params, className = '' }) => {
   const watermarkText = user?.email
     ? `UltimateDesk preview — ${user.email}`
     : 'UltimateDesk — preview only';
+
   const [exploded, setExploded] = useState(false);
   const [showDimensions, setShowDimensions] = useState(false);
   const canvasRef = useRef(null);
-  const animationRef = useRef(null);
-  const rotationRef = useRef(0);
 
-  // Colors based on desk type
   const colorSchemes = {
-    gaming: { 
-      primary: '#1A1A1A', 
-      secondary: '#2A2A2A', 
-      accent: '#FF3B30',
-      highlight: '#FF6B5B'
+    gaming: {
+      top: '#1a1a1d',
+      side: '#25252a',
+      frame: '#101114',
+      accent: '#ff4d43',
+      accentSoft: '#ff8a80',
+      panel: '#20232a',
     },
-    studio: { 
-      primary: '#2D2D2D', 
-      secondary: '#3D3D3D', 
-      accent: '#6366F1',
-      highlight: '#818CF8'
+    studio: {
+      top: '#2a2d34',
+      side: '#353944',
+      frame: '#171b22',
+      accent: '#6366f1',
+      accentSoft: '#a5b4fc',
+      panel: '#242935',
     },
-    office: { 
-      primary: '#D4A574', 
-      secondary: '#B8956E', 
+    office: {
+      top: '#c69a6b',
+      side: '#a98259',
+      frame: '#3d4148',
       accent: '#059669',
-      highlight: '#34D399'
-    }
+      accentSoft: '#6ee7b7',
+      panel: '#8f6b4a',
+    },
   };
-  
+
   const colors = colorSchemes[params.desk_type] || colorSchemes.office;
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    
+
     const ctx = canvas.getContext('2d');
-    const width = canvas.width;
-    const height = canvas.height;
-    
-    const draw = () => {
-      // Clear canvas with gradient background
-      const bgGradient = ctx.createRadialGradient(width/2, height/2, 0, width/2, height/2, width);
-      bgGradient.addColorStop(0, '#1F1F1F');
-      bgGradient.addColorStop(1, '#0D0D0D');
-      ctx.fillStyle = bgGradient;
-      ctx.fillRect(0, 0, width, height);
-      
-      // Draw grid with perspective feel
-      ctx.strokeStyle = 'rgba(255,255,255,0.03)';
-      ctx.lineWidth = 1;
-      for (let i = 0; i < width; i += 50) {
-        ctx.beginPath();
-        ctx.moveTo(i, 0);
-        ctx.lineTo(i, height);
-        ctx.stroke();
-      }
-      for (let i = 0; i < height; i += 50) {
-        ctx.beginPath();
-        ctx.moveTo(0, i);
-        ctx.lineTo(width, i);
-        ctx.stroke();
-      }
-      
-      // Scale factor
-      const scale = Math.min(width / (params.width * 1.3), height / (params.height * 2)) * 0.8;
-      const centerX = width / 2;
-      const centerY = height / 2 + 50;
-      
-      // Isometric projection settings
-      const isoAngle = Math.PI / 6;
-      const deskW = params.width * scale * 0.55;
-      const deskD = params.depth * scale * 0.35;
-      const deskH = params.height * scale * 0.55;
-      const t = Math.max(params.material_thickness * scale * 0.15, 4);
-      
-      const offsetX = exploded ? 25 : 0;
-      const offsetY = exploded ? 20 : 0;
-      
-      // Subtle rotation animation
-      const wobble = Math.sin(rotationRef.current * 0.02) * 3;
-      
-      // Helper function for isometric transformation
-      const isoX = (x, z) => centerX + (x - z) * Math.cos(isoAngle) + wobble;
-      const isoY = (y, x, z) => centerY - y + (x + z) * Math.sin(isoAngle) * 0.5;
-      
-      // Draw floor shadow
-      ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    const widthPx = canvas.width;
+    const heightPx = canvas.height;
+
+    const deskWidth = Math.max(1000, params.width || 1800);
+    const deskDepth = Math.max(600, params.depth || 700);
+    const deskHeight = Math.max(680, params.height || 750);
+    const t = Math.max(18, params.material_thickness || 18);
+
+    const legSize = Math.max(44, Math.round(t * 2.4));
+    const legInsetX = Math.max(70, Math.round(deskWidth * 0.08));
+    const legInsetZ = Math.max(55, Math.round(deskDepth * 0.08));
+
+    const clearSpanX = Math.max(300, deskWidth - ((legInsetX + legSize) * 2));
+    const clearSpanZ = Math.max(220, deskDepth - ((legInsetZ + legSize) * 2));
+    const backPanelW = Math.max(600, clearSpanX - 40);
+    const backPanelH = params.desk_type === 'office' ? 180 : 220;
+    const trayW = Math.max(500, Math.min(deskWidth - (legInsetX * 2) - 120, Math.round(deskWidth * 0.60)));
+
+    const explodeLift = exploded ? 26 : 0;
+    const explodeSpread = exploded ? 32 : 0;
+
+    const unit = Math.min(
+      (widthPx * 0.56) / (deskWidth + deskDepth + 260),
+      (heightPx * 0.66) / (deskHeight + deskDepth * 0.25 + 240)
+    );
+
+    const centerX = widthPx * 0.53;
+    const floorY = heightPx * 0.84;
+    const isoX = 0.58 * unit;
+    const isoY = 0.22 * unit;
+
+    const project = (x, y, z) => ({
+      x: centerX + (x - z) * isoX,
+      y: floorY - y * unit + (x + z) * isoY,
+    });
+
+    const shadeHex = (hex, amount) => {
+      const clean = hex.replace('#', '');
+      const num = Number.parseInt(clean, 16);
+      const r = Math.max(0, Math.min(255, (num >> 16) + amount));
+      const g = Math.max(0, Math.min(255, ((num >> 8) & 255) + amount));
+      const b = Math.max(0, Math.min(255, (num & 255) + amount));
+      return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')}`;
+    };
+
+    const rgba = (hex, alpha) => {
+      const clean = hex.replace('#', '');
+      const num = Number.parseInt(clean, 16);
+      const r = num >> 16;
+      const g = (num >> 8) & 255;
+      const b = num & 255;
+      return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    };
+
+    const pathFromPoints = (points) => {
       ctx.beginPath();
-      ctx.ellipse(centerX + wobble, centerY + deskH * 0.5 + 60, deskW * 0.7, deskD * 0.5, 0, 0, Math.PI * 2);
+      ctx.moveTo(points[0].x, points[0].y);
+      for (let i = 1; i < points.length; i += 1) {
+        ctx.lineTo(points[i].x, points[i].y);
+      }
+      ctx.closePath();
+    };
+
+    const drawFace = (points, fill, stroke = 'rgba(0,0,0,0.22)') => {
+      pathFromPoints(points);
+      ctx.fillStyle = fill;
       ctx.fill();
-      
-      // Draw back legs first (behind desk)
-      ctx.fillStyle = colors.secondary;
-      ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+      ctx.strokeStyle = stroke;
       ctx.lineWidth = 1;
-      
-      // Back left leg
-      const legWidth = t * 3;
-      const legDepth = deskD * 0.9;
-      
-      drawIsometricBox(ctx, 
-        isoX(-deskW/2 + legWidth/2 - offsetX, -legDepth/2 - offsetY),
-        isoY(deskH * 0.85, -deskW/2 + legWidth/2, -legDepth/2),
-        legWidth, deskH * 0.85, legDepth * 0.15,
-        colors.primary, colors.secondary
-      );
-      
-      // Back right leg
-      drawIsometricBox(ctx,
-        isoX(deskW/2 - legWidth/2 + offsetX, -legDepth/2 - offsetY),
-        isoY(deskH * 0.85, deskW/2 - legWidth/2, -legDepth/2),
-        legWidth, deskH * 0.85, legDepth * 0.15,
-        colors.primary, colors.secondary
-      );
-      
-      // Draw back panel/stretcher
-      drawIsometricBox(ctx,
-        isoX(0, -legDepth/2 - offsetY * 1.5),
-        isoY(deskH * 0.6, 0, -legDepth/2),
-        deskW - legWidth * 3, deskH * 0.25, t,
-        colors.primary, colors.secondary
-      );
-      
-      // Cable management tray
-      if (params.has_cable_management) {
-        ctx.fillStyle = '#111111';
-        drawIsometricBox(ctx,
-          isoX(0, -legDepth/2 + t),
-          isoY(deskH * 0.75 - offsetY * 2, 0, -legDepth/2),
-          deskW - legWidth * 4, t, legDepth * 0.2,
-          '#1A1A1A', '#111111'
-        );
-      }
-      
-      // Draw desktop (main surface)
-      const desktopGradient = ctx.createLinearGradient(
-        centerX - deskW/2, centerY - deskH,
-        centerX + deskW/2, centerY - deskH + deskD
-      );
-      desktopGradient.addColorStop(0, colors.primary);
-      desktopGradient.addColorStop(0.5, colors.secondary);
-      desktopGradient.addColorStop(1, colors.primary);
-      
-      drawIsometricBox(ctx,
-        isoX(0, 0),
-        isoY(deskH + offsetY * 2, 0, 0),
-        deskW, t * 2, deskD,
-        colors.primary, colors.secondary, desktopGradient
-      );
-      
-      // Front legs
-      drawIsometricBox(ctx,
-        isoX(-deskW/2 + legWidth/2 - offsetX, legDepth/2 + offsetY),
-        isoY(deskH * 0.85, -deskW/2 + legWidth/2, legDepth/2),
-        legWidth, deskH * 0.85, legDepth * 0.15,
-        colors.primary, colors.secondary
-      );
-      
-      drawIsometricBox(ctx,
-        isoX(deskW/2 - legWidth/2 + offsetX, legDepth/2 + offsetY),
-        isoY(deskH * 0.85, deskW/2 - legWidth/2, legDepth/2),
-        legWidth, deskH * 0.85, legDepth * 0.15,
-        colors.primary, colors.secondary
-      );
-      
-      // Front stretcher
-      drawIsometricBox(ctx,
-        isoX(0, legDepth/2 + offsetY * 1.5),
-        isoY(t * 3, 0, legDepth/2),
-        deskW - legWidth * 3, t * 2, t,
-        colors.primary, colors.secondary
-      );
-      
-      // RGB Channel (glow effect)
-      if (params.has_rgb_channels) {
-        ctx.shadowColor = colors.accent;
-        ctx.shadowBlur = 20;
-        ctx.fillStyle = colors.accent;
-        ctx.beginPath();
-        ctx.moveTo(isoX(-deskW/2 + 30, -legDepth/2), isoY(deskH + offsetY * 2 - t, -deskW/2 + 30, -legDepth/2));
-        ctx.lineTo(isoX(deskW/2 - 30, -legDepth/2), isoY(deskH + offsetY * 2 - t, deskW/2 - 30, -legDepth/2));
-        ctx.lineTo(isoX(deskW/2 - 30, -legDepth/2), isoY(deskH + offsetY * 2 - t + 4, deskW/2 - 30, -legDepth/2));
-        ctx.lineTo(isoX(-deskW/2 + 30, -legDepth/2), isoY(deskH + offsetY * 2 - t + 4, -deskW/2 + 30, -legDepth/2));
-        ctx.fill();
-        ctx.shadowBlur = 0;
-      }
-      
-      // Headset hook
-      if (params.has_headset_hook) {
-        const hookX = -deskW/2 - 15 - offsetX;
-        ctx.fillStyle = colors.accent;
-        ctx.shadowColor = colors.accent;
-        ctx.shadowBlur = 10;
-        drawIsometricBox(ctx,
-          isoX(hookX, 0),
-          isoY(deskH + offsetY * 3, hookX, 0),
-          12, 40, 8,
-          colors.accent, colors.highlight
-        );
-        drawIsometricBox(ctx,
-          isoX(hookX + 8, 0),
-          isoY(deskH + offsetY * 3 - 35, hookX + 8, 0),
-          20, 8, 8,
-          colors.accent, colors.highlight
-        );
-        ctx.shadowBlur = 0;
-      }
-      
-      // Mixer tray
-      if (params.has_mixer_tray) {
-        const mixerW = params.mixer_tray_width * scale * 0.4;
-        drawIsometricBox(ctx,
-          isoX(0, -legDepth/2 - 20 - offsetY * 3),
-          isoY(deskH + offsetY * 2 + 30, 0, -legDepth/2 - 20),
-          mixerW, t * 1.5, legDepth * 0.4,
-          colors.primary, colors.secondary
-        );
-        // Angled supports
-        ctx.fillStyle = colors.secondary;
-        ctx.beginPath();
-        ctx.moveTo(isoX(-mixerW/3, -legDepth/2), isoY(deskH + offsetY * 2, -mixerW/3, -legDepth/2));
-        ctx.lineTo(isoX(-mixerW/3, -legDepth/2 - 20), isoY(deskH + offsetY * 2 + 30, -mixerW/3, -legDepth/2 - 20));
-        ctx.lineTo(isoX(-mixerW/3 + 8, -legDepth/2 - 20), isoY(deskH + offsetY * 2 + 30, -mixerW/3 + 8, -legDepth/2 - 20));
-        ctx.fill();
-      }
-      
-      // GPU Tray
-      if (params.has_gpu_tray) {
-        drawIsometricBox(ctx,
-          isoX(deskW/4, legDepth/4 + offsetY),
-          isoY(deskH + offsetY * 2 - t * 3, deskW/4, legDepth/4),
-          60, t, 35,
-          '#1A1A1A', '#111111'
-        );
-      }
-      
-      // VESA Mount
-      if (params.has_vesa_mount) {
-        ctx.fillStyle = '#1A1A1A';
-        drawIsometricBox(ctx,
-          isoX(0, -legDepth/3 - offsetY * 5),
-          isoY(deskH + offsetY * 4 + 80, 0, -legDepth/3),
-          30, 80, 8,
-          '#1A1A1A', '#111111'
-        );
-        // Monitor placeholder
-        ctx.fillStyle = '#222222';
-        drawIsometricBox(ctx,
-          isoX(0, -legDepth/3 - offsetY * 5),
-          isoY(deskH + offsetY * 4 + 180, 0, -legDepth/3),
-          200, 120, 10,
-          '#2A2A2A', '#1A1A1A'
-        );
-        // Screen
-        ctx.fillStyle = '#3B3B3B';
-        const screenGlow = ctx.createLinearGradient(
-          centerX - 80, centerY - deskH - 100,
-          centerX + 80, centerY - deskH
-        );
-        screenGlow.addColorStop(0, '#4A4A4A');
-        screenGlow.addColorStop(0.5, '#3A3A3A');
-        screenGlow.addColorStop(1, '#2A2A2A');
-        ctx.fillStyle = screenGlow;
-        ctx.beginPath();
-        ctx.moveTo(isoX(-85, -legDepth/3 - offsetY * 5), isoY(deskH + offsetY * 4 + 175, -85, -legDepth/3));
-        ctx.lineTo(isoX(85, -legDepth/3 - offsetY * 5), isoY(deskH + offsetY * 4 + 175, 85, -legDepth/3));
-        ctx.lineTo(isoX(85, -legDepth/3 - offsetY * 5), isoY(deskH + offsetY * 4 + 70, 85, -legDepth/3));
-        ctx.lineTo(isoX(-85, -legDepth/3 - offsetY * 5), isoY(deskH + offsetY * 4 + 70, -85, -legDepth/3));
-        ctx.fill();
-      }
-      
-      // Increment rotation for animation
-      rotationRef.current += 1;
-
-      // === COPY PROTECTION: diagonal watermark for non-Pro ===
-      if (isProtected) {
-        ctx.save();
-        ctx.globalAlpha = 0.22;
-        ctx.fillStyle = '#FFFFFF';
-        ctx.font = 'bold 20px Helvetica, Arial, sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.translate(width / 2, height / 2);
-        ctx.rotate(-Math.PI / 7);
-        const stepY = 130;
-        for (let yy = -height; yy < height; yy += stepY) {
-          for (let xx = -width; xx < width; xx += 380) {
-            ctx.fillText(watermarkText, xx, yy);
-          }
-        }
-        ctx.restore();
-
-        // Subtle noise layer to discourage clean screenshot vectorisation
-        ctx.save();
-        ctx.globalAlpha = 0.05;
-        for (let i = 0; i < 800; i++) {
-          ctx.fillStyle = Math.random() > 0.5 ? '#FFFFFF' : '#000000';
-          ctx.fillRect(Math.random() * width, Math.random() * height, 1, 1);
-        }
-        ctx.restore();
-      }
-
-      animationRef.current = requestAnimationFrame(draw);
+      ctx.stroke();
     };
-    
-    draw();
-    
-    return () => {
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current);
-      }
+
+    const drawCuboid = ({ x, y, z, w, h, d, topColor, rightColor, frontColor, edgeColor }) => {
+      const p100 = project(x + w, y, z);
+      const p110 = project(x + w, y, z + d);
+      const p010 = project(x, y, z + d);
+      const p001 = project(x, y + h, z);
+      const p101 = project(x + w, y + h, z);
+      const p111 = project(x + w, y + h, z + d);
+      const p011 = project(x, y + h, z + d);
+
+      drawFace([p010, p011, p111, p110], frontColor, edgeColor);
+      drawFace([p100, p101, p111, p110], rightColor, edgeColor);
+      drawFace([p001, p101, p111, p011], topColor, edgeColor);
     };
-  }, [params, exploded, colors, isProtected, watermarkText]);
 
-  // Helper function to draw isometric box
-  function drawIsometricBox(ctx, x, y, w, h, d, colorTop, colorSide, customTop = null) {
-    const isoAngle = Math.PI / 6;
-    const cosA = Math.cos(isoAngle);
-    const sinA = Math.sin(isoAngle);
-    
-    // Top face
-    ctx.fillStyle = customTop || colorTop;
-    ctx.beginPath();
-    ctx.moveTo(x, y - h);
-    ctx.lineTo(x + w/2 * cosA, y - h - w/2 * sinA);
-    ctx.lineTo(x + w/2 * cosA - d/2 * cosA, y - h - w/2 * sinA - d/2 * sinA);
-    ctx.lineTo(x - d/2 * cosA, y - h - d/2 * sinA);
-    ctx.closePath();
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(0,0,0,0.3)';
-    ctx.stroke();
-    
-    // Right face
-    ctx.fillStyle = colorSide;
-    ctx.beginPath();
-    ctx.moveTo(x + w/2 * cosA, y - h - w/2 * sinA);
-    ctx.lineTo(x + w/2 * cosA, y - w/2 * sinA);
-    ctx.lineTo(x + w/2 * cosA - d/2 * cosA, y - w/2 * sinA - d/2 * sinA);
-    ctx.lineTo(x + w/2 * cosA - d/2 * cosA, y - h - w/2 * sinA - d/2 * sinA);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-    
-    // Left face  
-    const darkerSide = adjustBrightness(colorSide, -30);
-    ctx.fillStyle = darkerSide;
-    ctx.beginPath();
-    ctx.moveTo(x, y - h);
-    ctx.lineTo(x, y);
-    ctx.lineTo(x - d/2 * cosA, y - d/2 * sinA);
-    ctx.lineTo(x - d/2 * cosA, y - h - d/2 * sinA);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-  }
+    const drawGlowLine = (start, end, color, thicknessPx = 4) => {
+      ctx.save();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = thicknessPx;
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 18;
+      ctx.beginPath();
+      ctx.moveTo(start.x, start.y);
+      ctx.lineTo(end.x, end.y);
+      ctx.stroke();
+      ctx.restore();
+    };
 
-  function adjustBrightness(hex, amount) {
-    const num = parseInt(hex.replace('#', ''), 16);
-    const r = Math.min(255, Math.max(0, (num >> 16) + amount));
-    const g = Math.min(255, Math.max(0, ((num >> 8) & 0x00FF) + amount));
-    const b = Math.min(255, Math.max(0, (num & 0x0000FF) + amount));
-    return '#' + (b | (g << 8) | (r << 16)).toString(16).padStart(6, '0');
-  }
+    const drawFloorShadow = () => {
+      ctx.save();
+      ctx.fillStyle = 'rgba(0,0,0,0.18)';
+      ctx.beginPath();
+      ctx.ellipse(centerX, floorY + 20, deskWidth * unit * 0.33, deskDepth * unit * 0.11, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    };
 
-  // Dimension display helpers (copy protection: round/obscure for non-Pro)
-  const roundToRange = (v, step = 50) => `~${Math.round(v / step) * step}`;
-  const fmtDim = (v) => (isProtected ? roundToRange(v) : `${v}`);
-  const fmtMat = (v) => (isProtected ? '18' : `${v}`);
+    const frameTop = shadeHex(colors.frame, 14);
+    const frameRight = shadeHex(colors.frame, -2);
+    const frameFront = shadeHex(colors.frame, -14);
 
-  // Feature icons
+    const topGradient = ctx.createLinearGradient(0, 0, widthPx, heightPx);
+    topGradient.addColorStop(0, shadeHex(colors.top, 14));
+    topGradient.addColorStop(0.5, colors.top);
+    topGradient.addColorStop(1, shadeHex(colors.top, -10));
+
+    const panelTop = shadeHex(colors.panel, 10);
+    const panelRight = shadeHex(colors.panel, -2);
+    const panelFront = shadeHex(colors.panel, -12);
+
+    ctx.clearRect(0, 0, widthPx, heightPx);
+
+    const bg = ctx.createLinearGradient(0, 0, 0, heightPx);
+    bg.addColorStop(0, '#f4f5f7');
+    bg.addColorStop(1, '#eceff3');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, widthPx, heightPx);
+
+    ctx.strokeStyle = 'rgba(80, 87, 101, 0.06)';
+    ctx.lineWidth = 1;
+    for (let x = 0; x < widthPx; x += 48) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, heightPx);
+      ctx.stroke();
+    }
+    for (let y = 0; y < heightPx; y += 48) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(widthPx, y);
+      ctx.stroke();
+    }
+
+    drawFloorShadow();
+
+    // Rear posts
+    drawCuboid({
+      x: -deskWidth / 2 + legInsetX - explodeSpread,
+      y: 0,
+      z: deskDepth / 2 - legInsetZ - legSize + explodeSpread,
+      w: legSize,
+      h: deskHeight - t - explodeLift,
+      d: legSize,
+      topColor: frameTop,
+      rightColor: frameRight,
+      frontColor: frameFront,
+      edgeColor: 'rgba(0,0,0,0.18)',
+    });
+
+    drawCuboid({
+      x: deskWidth / 2 - legInsetX - legSize + explodeSpread,
+      y: 0,
+      z: deskDepth / 2 - legInsetZ - legSize + explodeSpread,
+      w: legSize,
+      h: deskHeight - t - explodeLift,
+      d: legSize,
+      topColor: frameTop,
+      rightColor: frameRight,
+      frontColor: frameFront,
+      edgeColor: 'rgba(0,0,0,0.18)',
+    });
+
+    // Front posts
+    drawCuboid({
+      x: -deskWidth / 2 + legInsetX - explodeSpread,
+      y: 0,
+      z: -deskDepth / 2 + legInsetZ - explodeSpread,
+      w: legSize,
+      h: deskHeight - t - explodeLift,
+      d: legSize,
+      topColor: frameTop,
+      rightColor: frameRight,
+      frontColor: frameFront,
+      edgeColor: 'rgba(0,0,0,0.18)',
+    });
+
+    drawCuboid({
+      x: deskWidth / 2 - legInsetX - legSize + explodeSpread,
+      y: 0,
+      z: -deskDepth / 2 + legInsetZ - explodeSpread,
+      w: legSize,
+      h: deskHeight - t - explodeLift,
+      d: legSize,
+      topColor: frameTop,
+      rightColor: frameRight,
+      frontColor: frameFront,
+      edgeColor: 'rgba(0,0,0,0.18)',
+    });
+
+    // Rear upper rail
+    drawCuboid({
+      x: -clearSpanX / 2,
+      y: deskHeight * 0.60,
+      z: deskDepth / 2 - legInsetZ - (legSize / 2) + explodeSpread,
+      w: clearSpanX,
+      h: 42,
+      d: t,
+      topColor: frameTop,
+      rightColor: frameRight,
+      frontColor: frameFront,
+      edgeColor: 'rgba(0,0,0,0.18)',
+    });
+
+    // Front lower rail
+    drawCuboid({
+      x: -clearSpanX / 2,
+      y: deskHeight * 0.16,
+      z: -deskDepth / 2 + legInsetZ + (legSize / 2) - explodeSpread,
+      w: clearSpanX,
+      h: 30,
+      d: t,
+      topColor: frameTop,
+      rightColor: frameRight,
+      frontColor: frameFront,
+      edgeColor: 'rgba(0,0,0,0.18)',
+    });
+
+    // Side rails
+    drawCuboid({
+      x: -deskWidth / 2 + legInsetX + (legSize - t) / 2 - explodeSpread,
+      y: deskHeight * 0.16,
+      z: -clearSpanZ / 2,
+      w: t,
+      h: 30,
+      d: clearSpanZ,
+      topColor: frameTop,
+      rightColor: frameRight,
+      frontColor: frameFront,
+      edgeColor: 'rgba(0,0,0,0.18)',
+    });
+
+    drawCuboid({
+      x: deskWidth / 2 - legInsetX - legSize + (legSize - t) / 2 + explodeSpread,
+      y: deskHeight * 0.16,
+      z: -clearSpanZ / 2,
+      w: t,
+      h: 30,
+      d: clearSpanZ,
+      topColor: frameTop,
+      rightColor: frameRight,
+      frontColor: frameFront,
+      edgeColor: 'rgba(0,0,0,0.18)',
+    });
+
+    // Back modesty panel
+    drawCuboid({
+      x: -backPanelW / 2,
+      y: deskHeight * 0.32,
+      z: deskDepth / 2 - legInsetZ - (legSize / 2) - t + explodeSpread,
+      w: backPanelW,
+      h: backPanelH,
+      d: t,
+      topColor: panelTop,
+      rightColor: panelRight,
+      frontColor: panelFront,
+      edgeColor: 'rgba(0,0,0,0.20)',
+    });
+
+    // Cable tray
+    if (params.has_cable_management) {
+      const trayBaseY = deskHeight - 105;
+      const trayZ = deskDepth * 0.06;
+      drawCuboid({
+        x: -trayW / 2,
+        y: trayBaseY,
+        z: trayZ,
+        w: trayW,
+        h: 12,
+        d: 85,
+        topColor: panelTop,
+        rightColor: panelRight,
+        frontColor: panelFront,
+        edgeColor: 'rgba(0,0,0,0.20)',
+      });
+      drawCuboid({
+        x: -trayW / 2,
+        y: trayBaseY + 12,
+        z: trayZ,
+        w: trayW,
+        h: 50,
+        d: t,
+        topColor: panelTop,
+        rightColor: panelRight,
+        frontColor: panelFront,
+        edgeColor: 'rgba(0,0,0,0.20)',
+      });
+      drawCuboid({
+        x: -trayW / 2,
+        y: trayBaseY + 12,
+        z: trayZ + 85 - t,
+        w: trayW,
+        h: 50,
+        d: t,
+        topColor: panelTop,
+        rightColor: panelRight,
+        frontColor: panelFront,
+        edgeColor: 'rgba(0,0,0,0.20)',
+      });
+      drawCuboid({
+        x: -trayW / 2,
+        y: trayBaseY + 12,
+        z: trayZ,
+        w: t,
+        h: 50,
+        d: 85,
+        topColor: panelTop,
+        rightColor: panelRight,
+        frontColor: panelFront,
+        edgeColor: 'rgba(0,0,0,0.20)',
+      });
+      drawCuboid({
+        x: trayW / 2 - t,
+        y: trayBaseY + 12,
+        z: trayZ,
+        w: t,
+        h: 50,
+        d: 85,
+        topColor: panelTop,
+        rightColor: panelRight,
+        frontColor: panelFront,
+        edgeColor: 'rgba(0,0,0,0.20)',
+      });
+    }
+
+    // Mixer tray
+    if (params.has_mixer_tray) {
+      const mixerW = Math.max(280, Math.min(params.mixer_tray_width || 520, clearSpanX));
+      drawCuboid({
+        x: -mixerW / 2,
+        y: deskHeight - 135,
+        z: -deskDepth * 0.50,
+        w: mixerW,
+        h: t,
+        d: 170,
+        topColor: panelTop,
+        rightColor: panelRight,
+        frontColor: panelFront,
+        edgeColor: 'rgba(0,0,0,0.20)',
+      });
+      drawCuboid({
+        x: -mixerW / 2,
+        y: deskHeight - 135,
+        z: -deskDepth * 0.50,
+        w: 170,
+        h: 120,
+        d: t,
+        topColor: frameTop,
+        rightColor: frameRight,
+        frontColor: frameFront,
+        edgeColor: 'rgba(0,0,0,0.18)',
+      });
+      drawCuboid({
+        x: mixerW / 2 - 170,
+        y: deskHeight - 135,
+        z: -deskDepth * 0.50,
+        w: 170,
+        h: 120,
+        d: t,
+        topColor: frameTop,
+        rightColor: frameRight,
+        frontColor: frameFront,
+        edgeColor: 'rgba(0,0,0,0.18)',
+      });
+    }
+
+    // Headset hook
+    if (params.has_headset_hook) {
+      drawCuboid({
+        x: -deskWidth / 2 - 14,
+        y: deskHeight - 120,
+        z: -deskDepth * 0.12,
+        w: 14,
+        h: 90,
+        d: 12,
+        topColor: colors.accent,
+        rightColor: shadeHex(colors.accent, -14),
+        frontColor: shadeHex(colors.accent, -24),
+        edgeColor: 'rgba(0,0,0,0.20)',
+      });
+      drawCuboid({
+        x: -deskWidth / 2 - 14,
+        y: deskHeight - 42,
+        z: -deskDepth * 0.12,
+        w: 46,
+        h: 12,
+        d: 12,
+        topColor: colors.accentSoft,
+        rightColor: colors.accent,
+        frontColor: shadeHex(colors.accent, -16),
+        edgeColor: 'rgba(0,0,0,0.20)',
+      });
+    }
+
+    // GPU tray
+    if (params.has_gpu_tray) {
+      drawCuboid({
+        x: deskWidth * 0.12,
+        y: deskHeight - 180,
+        z: deskDepth * 0.04,
+        w: 150,
+        h: 12,
+        d: 70,
+        topColor: panelTop,
+        rightColor: panelRight,
+        frontColor: panelFront,
+        edgeColor: 'rgba(0,0,0,0.20)',
+      });
+      drawCuboid({
+        x: deskWidth * 0.12,
+        y: deskHeight - 168,
+        z: deskDepth * 0.04,
+        w: 70,
+        h: 70,
+        d: t,
+        topColor: frameTop,
+        rightColor: frameRight,
+        frontColor: frameFront,
+        edgeColor: 'rgba(0,0,0,0.20)',
+      });
+      drawCuboid({
+        x: deskWidth * 0.12 + 150 - 70,
+        y: deskHeight - 168,
+        z: deskDepth * 0.04,
+        w: 70,
+        h: 70,
+        d: t,
+        topColor: frameTop,
+        rightColor: frameRight,
+        frontColor: frameFront,
+        edgeColor: 'rgba(0,0,0,0.20)',
+      });
+    }
+
+    // Monitor/VESA
+    if (params.has_vesa_mount) {
+      drawCuboid({
+        x: -16,
+        y: deskHeight + t,
+        z: -deskDepth * 0.18,
+        w: 32,
+        h: 180,
+        d: 16,
+        topColor: frameTop,
+        rightColor: frameRight,
+        frontColor: frameFront,
+        edgeColor: 'rgba(0,0,0,0.20)',
+      });
+      drawCuboid({
+        x: -100,
+        y: deskHeight + t + 60,
+        z: -deskDepth * 0.18,
+        w: 120,
+        h: 120,
+        d: 12,
+        topColor: panelTop,
+        rightColor: panelRight,
+        frontColor: panelFront,
+        edgeColor: 'rgba(0,0,0,0.20)',
+      });
+      drawCuboid({
+        x: 20,
+        y: deskHeight + t + 20,
+        z: -deskDepth * 0.18,
+        w: 200,
+        h: 200,
+        d: 16,
+        topColor: '#1f2732',
+        rightColor: '#171d26',
+        frontColor: '#1b212a',
+        edgeColor: 'rgba(0,0,0,0.20)',
+      });
+    }
+
+    // Desktop top
+    drawCuboid({
+      x: -deskWidth / 2,
+      y: deskHeight - explodeLift,
+      z: -deskDepth / 2,
+      w: deskWidth,
+      h: t,
+      d: deskDepth,
+      topColor: topGradient,
+      rightColor: shadeHex(colors.side, -4),
+      frontColor: shadeHex(colors.side, -16),
+      edgeColor: 'rgba(0,0,0,0.20)',
+    });
+
+    if (isProtected) {
+      ctx.save();
+      ctx.globalAlpha = 0.12;
+      ctx.fillStyle = '#2f3742';
+      ctx.font = 'bold 18px Helvetica, Arial, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.translate(widthPx / 2, heightPx / 2);
+      ctx.rotate(-Math.PI / 7);
+      for (let yy = -heightPx; yy < heightPx; yy += 120) {
+        for (let xx = -widthPx; xx < widthPx; xx += 320) {
+          ctx.fillText(watermarkText, xx, yy);
+        }
+      }
+      ctx.restore();
+    }
+  }, [colors, exploded, isProtected, params, watermarkText]);
+
+  const roundToRange = (value, step = 50) => `~${Math.round(value / step) * step}`;
+  const fmtDim = (value) => (isProtected ? roundToRange(value) : `${value}`);
+  const fmtMat = (value) => (isProtected ? '18' : `${value}`);
+
   const activeFeatures = [];
-  if (params.has_rgb_channels) activeFeatures.push({ icon: Lamp, label: 'RGB' });
+  if (params.has_cable_management) activeFeatures.push({ icon: Cube, label: 'Cable tray' });
+  if (params.has_mixer_tray) activeFeatures.push({ icon: MusicNote, label: 'Mixer tray' });
   if (params.has_headset_hook) activeFeatures.push({ icon: Headphones, label: 'Hook' });
+  if (params.has_gpu_tray) activeFeatures.push({ icon: Cube, label: 'GPU tray' });
   if (params.has_vesa_mount) activeFeatures.push({ icon: Monitor, label: 'VESA' });
-  if (params.has_mixer_tray) activeFeatures.push({ icon: MusicNote, label: 'Mixer' });
 
   return (
     <div
@@ -392,7 +592,6 @@ const DeskPreview3D = ({ params, className = '' }) => {
       style={isProtected ? { userSelect: 'none', WebkitUserSelect: 'none' } : undefined}
       data-testid="desk-preview-root"
     >
-      {/* Control buttons */}
       <div className="absolute top-4 right-4 z-10 flex gap-2">
         <motion.button
           whileHover={{ scale: 1.05 }}
@@ -416,23 +615,24 @@ const DeskPreview3D = ({ params, className = '' }) => {
         </motion.button>
       </div>
 
-      {/* Type badge */}
-      <div className="absolute top-4 left-4 z-10">
+      <div className="absolute top-4 left-4 z-10 flex gap-2">
         <span className="px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider bg-[var(--primary)] text-white shadow-lg">
           {params.desk_type} Desk
         </span>
+        <span className="px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider bg-white/85 text-slate-700 shadow-sm">
+          Straight frame
+        </span>
       </div>
 
-      {/* Active features */}
       {activeFeatures.length > 0 && (
         <div className="absolute top-14 left-4 z-10 flex flex-col gap-2">
           {activeFeatures.map((feature, idx) => (
             <motion.div
-              key={idx}
+              key={feature.label}
               initial={{ opacity: 0, x: -10 }}
               animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: idx * 0.1 }}
-              className="flex items-center gap-2 px-2 py-1 rounded-md bg-[var(--surface)]/80 backdrop-blur-sm text-xs"
+              transition={{ delay: idx * 0.05 }}
+              className="flex items-center gap-2 px-2 py-1 rounded-md bg-white/80 backdrop-blur-sm text-xs shadow-sm"
             >
               <feature.icon size={14} className="text-[var(--primary)]" />
               <span>{feature.label}</span>
@@ -441,9 +641,8 @@ const DeskPreview3D = ({ params, className = '' }) => {
         </div>
       )}
 
-      {/* Dimension labels */}
       {showDimensions && (
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
           className="absolute top-16 right-4 z-10 neu-surface rounded-lg p-3"
@@ -466,16 +665,10 @@ const DeskPreview3D = ({ params, className = '' }) => {
               <span className="text-[var(--text-secondary)]">Material:</span>
               <span className="font-bold">{fmtMat(params.material_thickness)}mm</span>
             </div>
-            {isProtected && (
-              <div className="pt-2 mt-1 border-t border-[var(--border)] flex items-center gap-1.5 text-[10px] text-[var(--text-secondary)]">
-                <Lock size={11} /> Exact values unlocked after export
-              </div>
-            )}
           </div>
         </motion.div>
       )}
 
-      {/* Stats overlay */}
       <div className="absolute bottom-4 left-4 z-10 glass-surface rounded-lg p-3" data-testid="preview-stats">
         <div className="flex items-center gap-4 text-sm font-mono">
           <div>
@@ -497,23 +690,20 @@ const DeskPreview3D = ({ params, className = '' }) => {
           )}
         </div>
       </div>
-      
-      {/* 3D indicator */}
+
       <div className="absolute bottom-4 right-4 z-10 glass-surface rounded-lg px-3 py-2 flex items-center gap-2">
         <Cube size={16} className="text-[var(--primary)]" />
-        <span className="text-xs font-medium">Isometric View</span>
+        <span className="text-xs font-medium">Export-aligned preview</span>
       </div>
 
-      {/* Canvas */}
-      <canvas 
+      <canvas
         ref={canvasRef}
         width={900}
         height={600}
-        className="w-full h-full object-contain rounded-lg"
+        className="pointer-events-none w-full h-full object-contain rounded-lg"
       />
     </div>
   );
 };
 
 export default DeskPreview3D;
-

@@ -1,4 +1,4 @@
-from dotenv import load_dotenv
+﻿from dotenv import load_dotenv
 load_dotenv()
 
 from fastapi import FastAPI, APIRouter, HTTPException, Request, Depends, Response
@@ -18,8 +18,18 @@ import json
 import math
 
 # Emergent integrations
-from emergentintegrations.llm.chat import LlmChat, UserMessage
-from emergentintegrations.payments.stripe.checkout import StripeCheckout, CheckoutSessionRequest, CheckoutSessionResponse, CheckoutStatusResponse
+try:
+    from emergentintegrations.llm.chat import LlmChat, UserMessage
+    from emergentintegrations.payments.stripe.checkout import StripeCheckout, CheckoutSessionRequest, CheckoutSessionResponse, CheckoutStatusResponse
+    HAS_EMERGENT_INTEGRATIONS = True
+except ImportError:
+    LlmChat = None
+    UserMessage = None
+    StripeCheckout = None
+    CheckoutSessionRequest = None
+    CheckoutSessionResponse = None
+    CheckoutStatusResponse = None
+    HAS_EMERGENT_INTEGRATIONS = False
 
 # Pricing engine
 from pricing import (
@@ -322,7 +332,7 @@ async def get_presets():
             "params": DesignParams(
                 width=1800, depth=800, height=750,
                 desk_type="gaming", monitor_count=3,
-                has_rgb_channels=True, has_headset_hook=True,
+                has_rgb_channels=False, has_headset_hook=True,
                 has_cable_management=True, leg_style="angular"
             ).model_dump()
         },
@@ -333,7 +343,7 @@ async def get_presets():
             "params": DesignParams(
                 width=2000, depth=900, height=750,
                 desk_type="studio", has_mixer_tray=True,
-                mixer_tray_width=610, has_pedal_tilt=True,
+                mixer_tray_width=610, has_pedal_tilt=False,
                 has_cable_management=True, leg_style="solid"
             ).model_dump()
         },
@@ -476,6 +486,9 @@ async def chat_design(chat_req: ChatRequest, request: Request):
     session_id = chat_req.session_id or str(uuid.uuid4())
     current_params = chat_req.current_params or DesignParams()
     
+    if not HAS_EMERGENT_INTEGRATIONS:
+        raise HTTPException(status_code=503, detail="AI chat unavailable in local mode")
+    
     try:
         api_key = os.environ.get("EMERGENT_LLM_KEY")
         if not api_key:
@@ -565,121 +578,94 @@ async def chat_design(chat_req: ChatRequest, request: Request):
 
 # ============== CNC GENERATOR ROUTES ==============
 
+
 def calculate_desk_parts(params: DesignParams) -> List[Dict[str, Any]]:
-    """Calculate all parts needed for the desk"""
-    parts = []
-    t = params.material_thickness
-    
-    # Main desktop
-    parts.append({
-        "name": "Desktop",
-        "width": params.width,
-        "height": params.depth,
-        "quantity": 1,
-        "type": "panel"
-    })
-    
-    # Side panels (legs)
-    leg_depth = params.depth - 50
-    parts.append({
-        "name": "Left Leg",
-        "width": leg_depth,
-        "height": params.height - t,
-        "quantity": 1,
-        "type": "panel"
-    })
-    parts.append({
-        "name": "Right Leg",
-        "width": leg_depth,
-        "height": params.height - t,
-        "quantity": 1,
-        "type": "panel"
-    })
-    
-    # Back panel
-    parts.append({
-        "name": "Back Panel",
-        "width": params.width - (2 * t),
-        "height": 200,
-        "quantity": 1,
-        "type": "panel"
-    })
-    
-    # Stretcher
-    parts.append({
-        "name": "Front Stretcher",
-        "width": params.width - (2 * t) - 100,
-        "height": 100,
-        "quantity": 1,
-        "type": "panel"
-    })
-    
-    # Optional features
+    """Generate export parts from the same straight-frame desk logic the preview uses."""
+    parts: List[Dict[str, Any]] = []
+
+    width = max(1000, int(params.width))
+    depth = max(600, int(params.depth))
+    height = max(680, int(params.height))
+    t = max(15, int(params.material_thickness))
+
+    leg_size = max(44, int(round(t * 2.4)))
+    leg_inset_x = max(70, int(round(width * 0.08)))
+    leg_inset_y = max(55, int(round(depth * 0.08)))
+
+    clear_span_x = max(300, width - ((leg_inset_x + leg_size) * 2))
+    clear_span_y = max(220, depth - ((leg_inset_y + leg_size) * 2))
+
+    def add_part(name: str, part_w: float, part_h: float, qty: int = 1, kind: str = "panel") -> None:
+        part_w = int(round(part_w))
+        part_h = int(round(part_h))
+        if part_w <= 0 or part_h <= 0 or qty <= 0:
+            return
+        parts.append({
+            "name": name,
+            "width": part_w,
+            "height": part_h,
+            "quantity": qty,
+            "type": kind,
+        })
+
+    add_part("Desktop Top", width, depth)
+
+    add_part("Leg Post FL", leg_size, height - t)
+    add_part("Leg Post FR", leg_size, height - t)
+    add_part("Leg Post RL", leg_size, height - t)
+    add_part("Leg Post RR", leg_size, height - t)
+
+    add_part("Rear Upper Rail", clear_span_x, 42)
+    add_part("Front Lower Rail", clear_span_x, 30)
+    add_part("Left Side Rail", clear_span_y, 30)
+    add_part("Right Side Rail", clear_span_y, 30)
+
+    back_panel_w = max(600, clear_span_x - 40)
+    back_panel_h = 180 if params.desk_type == "office" else 220
+    add_part("Back Modesty Panel", back_panel_w, back_panel_h)
+
     if params.has_cable_management:
-        parts.append({
-            "name": "Cable Tray",
-            "width": params.width - 200,
-            "height": 150,
-            "quantity": 1,
-            "type": "panel"
-        })
-    
+        tray_w = max(500, min(width - (leg_inset_x * 2) - 120, int(width * 0.60)))
+        add_part("Cable Tray Base", tray_w, 85)
+        add_part("Cable Tray Front", tray_w, 50)
+        add_part("Cable Tray Back", tray_w, 50)
+        add_part("Cable Tray End Left", 85, 50)
+        add_part("Cable Tray End Right", 85, 50)
+
     if params.has_headset_hook:
-        parts.append({
-            "name": "Headset Hook",
-            "width": 80,
-            "height": 120,
-            "quantity": 1,
-            "type": "cutout"
-        })
-    
+        add_part("Headset Hook Backplate", 90, 30)
+        add_part("Headset Hook Arm", 60, 30)
+
     if params.has_gpu_tray:
-        parts.append({
-            "name": "GPU Support Tray",
-            "width": 350,
-            "height": 200,
-            "quantity": 1,
-            "type": "panel"
-        })
-    
+        add_part("GPU Tray Base", 150, 70)
+        add_part("GPU Tray Side Left", 70, 70)
+        add_part("GPU Tray Side Right", 70, 70)
+        add_part("GPU Tray Front Stop", 150, 25)
+
     if params.has_mixer_tray:
-        parts.append({
-            "name": "Mixer Tray",
-            "width": params.mixer_tray_width,
-            "height": 400,
-            "quantity": 1,
-            "type": "panel"
-        })
-        parts.append({
-            "name": "Mixer Tray Support L",
-            "width": 100,
-            "height": 400,
-            "quantity": 1,
-            "type": "panel"
-        })
-        parts.append({
-            "name": "Mixer Tray Support R",
-            "width": 100,
-            "height": 400,
-            "quantity": 1,
-            "type": "panel"
-        })
-    
+        tray_w = max(280, min(int(params.mixer_tray_width or 520), clear_span_x))
+        add_part("Mixer Tray", tray_w, 170)
+        add_part("Mixer Tray Support Left", 170, 120)
+        add_part("Mixer Tray Support Right", 170, 120)
+        add_part("Mixer Tray Front Lip", tray_w, 40)
+
+    if getattr(params, "has_pedal_tilt", False):
+        add_part("Pedal Platform", 500, 240)
+        add_part("Pedal Support Left", 240, 120)
+        add_part("Pedal Support Right", 240, 120)
+
     if params.has_vesa_mount:
-        parts.append({
-            "name": "VESA Mount Plate",
-            "width": 200,
-            "height": 200,
-            "quantity": 1,
-            "type": "panel"
-        })
-    
+        add_part("VESA Upright", 180, 100)
+        add_part("VESA Mount Plate", 200, 200)
+        add_part("VESA Gusset Left", 120, 120)
+        add_part("VESA Gusset Right", 120, 120)
+
     return parts
 
 def simple_nesting(parts: List[Dict], sheet_width: int, sheet_height: int) -> NestingResult:
     """Simple bin packing algorithm for sheet nesting"""
     # Add margin for cuts
-    margin = 10
+    margin = 18
     
     # Sort parts by area (largest first)
     sorted_parts = sorted(parts, key=lambda p: p["width"] * p["height"], reverse=True)
@@ -774,7 +760,7 @@ def simple_nesting(parts: List[Dict], sheet_width: int, sheet_height: int) -> Ne
 def generate_gcode_preview(parts: List[Dict], config: CNCConfig) -> str:
     """Generate a preview of G-code for the parts"""
     lines = [
-        "; UltimateDesk CNC Pro - G-Code Preview",
+        "; UltimateDesk - G-Code Preview",
         "; Material: 18mm NZ Plywood",
         f"; Bit Size: {config.bit_size}mm",
         f"; Cut Depth Per Pass: {config.cut_depth_per_pass}mm",
@@ -791,7 +777,7 @@ def generate_gcode_preview(parts: List[Dict], config: CNCConfig) -> str:
     feed_rate = 1500 if config.bit_size <= 6 else 1200
     plunge_rate = 300
     
-    for i, part in enumerate(parts[:3]):  # Preview first 3 parts
+    for i, part in enumerate(parts):
         lines.append(f"; Part: {part['name']}")
         lines.append(f"G0 Z10 ; Safe height")
         lines.append(f"G0 X{part.get('x', 0)} Y{part.get('y', 0)} ; Move to start")
@@ -807,7 +793,6 @@ def generate_gcode_preview(parts: List[Dict], config: CNCConfig) -> str:
         lines.append("")
     
     lines.extend([
-        "; ... (additional parts omitted in preview)",
         "",
         "G0 Z25 ; Raise to safe height",
         "M5 ; Spindle off",
@@ -879,7 +864,7 @@ def generate_full_gcode(parts: List[Dict], config: CNCConfig, design_name: str) 
     """Generate complete production G-code for all parts"""
     lines = [
         f"; ========================================",
-        f"; UltimateDesk CNC Pro - Production G-Code",
+        f"; UltimateDesk - Production G-Code",
         f"; Design: {design_name}",
         f"; Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}",
         f"; ========================================",
@@ -951,15 +936,22 @@ def generate_full_gcode(parts: List[Dict], config: CNCConfig, design_name: str) 
         "G0 X0 Y0 ; Return to machine origin",
         "M30 ; Program end",
         "",
-        "; Thank you for using UltimateDesk CNC Pro!",
+        "; Thank you for using UltimateDesk!",
         "; Questions? support@ultimatedesk.co.nz"
     ])
     
     return "\n".join(lines)
 
 def generate_dxf(parts: List[Dict], config: CNCConfig, design_name: str) -> str:
-    """Generate DXF file for CAD/CAM import"""
-    # DXF R12 format (widely compatible)
+    """Generate DXF file for CAD/CAM import, separated by sheet."""
+    sheet_gap = 400
+    title_band = 80
+
+    sheet_indexes = sorted({part.get('sheet', 0) for part in parts}) or [0]
+    sheet_count = max(sheet_indexes) + 1
+    total_width = (sheet_count * config.sheet_width) + ((sheet_count - 1) * sheet_gap)
+    total_height = config.sheet_height + title_band
+
     dxf_lines = [
         "0", "SECTION",
         "2", "HEADER",
@@ -974,103 +966,114 @@ def generate_dxf(parts: List[Dict], config: CNCConfig, design_name: str) -> str:
         "20", "0.0",
         "30", "0.0",
         "9", "$EXTMAX",
-        "10", str(config.sheet_width),
-        "20", str(config.sheet_height),
+        "10", str(total_width),
+        "20", str(total_height),
         "30", "0.0",
         "0", "ENDSEC",
         "0", "SECTION",
         "2", "ENTITIES"
     ]
-    
+
+    for sheet_idx in sheet_indexes:
+        x_offset = sheet_idx * (config.sheet_width + sheet_gap)
+
+        dxf_lines.extend([
+            "0", "LINE", "8", "SHEET_FRAME", "10", str(x_offset), "20", "0", "30", "0.0", "11", str(x_offset + config.sheet_width), "21", "0", "31", "0.0",
+            "0", "LINE", "8", "SHEET_FRAME", "10", str(x_offset + config.sheet_width), "20", "0", "30", "0.0", "11", str(x_offset + config.sheet_width), "21", str(config.sheet_height), "31", "0.0",
+            "0", "LINE", "8", "SHEET_FRAME", "10", str(x_offset + config.sheet_width), "20", str(config.sheet_height), "30", "0.0", "11", str(x_offset), "21", str(config.sheet_height), "31", "0.0",
+            "0", "LINE", "8", "SHEET_FRAME", "10", str(x_offset), "20", str(config.sheet_height), "30", "0.0", "11", str(x_offset), "21", "0", "31", "0.0",
+            "0", "TEXT", "8", "SHEET_LABELS", "10", str(x_offset + 20), "20", str(config.sheet_height + 30), "30", "0.0", "40", "28.0", "1", f"Sheet {sheet_idx + 1}"
+        ])
+
     for i, part in enumerate(parts):
-        x, y = part.get('x', 0), part.get('y', 0)
+        sheet_idx = part.get('sheet', 0)
+        x_offset = sheet_idx * (config.sheet_width + sheet_gap)
+        x = x_offset + part.get('x', 0)
+        y = part.get('y', 0)
         w, h = part['width'], part['height']
-        
-        # Draw rectangle for each part using LINE entities
-        # Bottom edge
+
         dxf_lines.extend([
-            "0", "LINE",
-            "8", f"PART_{i+1}_{part['name'].replace(' ', '_')}",
-            "10", str(x),
-            "20", str(y),
-            "30", "0.0",
-            "11", str(x + w),
-            "21", str(y),
-            "31", "0.0"
+            "0", "LINE", "8", f"PART_{sheet_idx+1}_{i+1}", "10", str(x), "20", str(y), "30", "0.0", "11", str(x + w), "21", str(y), "31", "0.0",
+            "0", "LINE", "8", f"PART_{sheet_idx+1}_{i+1}", "10", str(x + w), "20", str(y), "30", "0.0", "11", str(x + w), "21", str(y + h), "31", "0.0",
+            "0", "LINE", "8", f"PART_{sheet_idx+1}_{i+1}", "10", str(x + w), "20", str(y + h), "30", "0.0", "11", str(x), "21", str(y + h), "31", "0.0",
+            "0", "LINE", "8", f"PART_{sheet_idx+1}_{i+1}", "10", str(x), "20", str(y + h), "30", "0.0", "11", str(x), "21", str(y), "31", "0.0"
         ])
-        # Right edge
-        dxf_lines.extend([
-            "0", "LINE",
-            "8", f"PART_{i+1}_{part['name'].replace(' ', '_')}",
-            "10", str(x + w),
-            "20", str(y),
-            "30", "0.0",
-            "11", str(x + w),
-            "21", str(y + h),
-            "31", "0.0"
-        ])
-        # Top edge
-        dxf_lines.extend([
-            "0", "LINE",
-            "8", f"PART_{i+1}_{part['name'].replace(' ', '_')}",
-            "10", str(x + w),
-            "20", str(y + h),
-            "30", "0.0",
-            "11", str(x),
-            "21", str(y + h),
-            "31", "0.0"
-        ])
-        # Left edge
-        dxf_lines.extend([
-            "0", "LINE",
-            "8", f"PART_{i+1}_{part['name'].replace(' ', '_')}",
-            "10", str(x),
-            "20", str(y + h),
-            "30", "0.0",
-            "11", str(x),
-            "21", str(y),
-            "31", "0.0"
-        ])
-        
-        # Add part label as TEXT
+
+        label_x = x + (w / 2)
+        label_y = y + (h / 2)
+        label_size = max(10.0, min(24.0, min(w, h) * 0.10))
+        label_text = part['name'] if min(w, h) < 140 else f"{part['name']} ({w}x{h})"
+
         dxf_lines.extend([
             "0", "TEXT",
-            "8", f"LABELS",
-            "10", str(x + w/2),
-            "20", str(y + h/2),
+            "8", "LABELS",
+            "10", str(label_x),
+            "20", str(label_y),
             "30", "0.0",
-            "40", "20.0",
-            "1", f"{part['name']} ({w}x{h})"
+            "40", str(label_size),
+            "72", "1",
+            "73", "2",
+            "11", str(label_x),
+            "21", str(label_y),
+            "31", "0.0",
+            "1", label_text
         ])
-    
+
     dxf_lines.extend([
         "0", "ENDSEC",
         "0", "EOF"
     ])
-    
-    return "\n".join(dxf_lines)
+
+    return '\n'.join(dxf_lines)
 
 def generate_svg(parts: List[Dict], config: CNCConfig, design_name: str) -> str:
-    """Generate SVG cutting layout (one path per part, millimeter units)."""
+    """Generate SVG cutting layout separated by sheet."""
     sw, sh = config.sheet_width, config.sheet_height
+    sheet_gap = 400
+    title_band = 80
+
+    sheet_indexes = sorted({part.get('sheet', 0) for part in parts}) or [0]
+    sheet_count = max(sheet_indexes) + 1
+    total_width = (sheet_count * sw) + ((sheet_count - 1) * sheet_gap)
+    total_height = sh + title_band
+
     lines = [
         f'<?xml version="1.0" encoding="UTF-8"?>',
-        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {sw} {sh}" width="{sw}mm" height="{sh}mm">',
-        f'  <title>{design_name} — UltimateDesk CNC Pro</title>',
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {total_width} {total_height}" width="{total_width}mm" height="{total_height}mm">',
+        f'  <title>{design_name} - UltimateDesk</title>',
         f'  <desc>18mm plywood cutting layout. Verify in CAM software before cutting.</desc>',
-        f'  <rect x="0" y="0" width="{sw}" height="{sh}" fill="none" stroke="#888" stroke-width="1"/>',
+        f'  <style>',
+        f'    .sheet-title {{ font: 28px Arial, sans-serif; fill: #333; font-weight: bold; }}',
+        f'    .part-label {{ font: 16px Arial, sans-serif; fill: #222; text-anchor: middle; dominant-baseline: middle; }}',
+        f'    .sheet-frame {{ fill: none; stroke: #888; stroke-width: 2; }}',
+        f'    .part-rect {{ fill: none; stroke: #000; stroke-width: 2; }}',
+        f'  </style>',
     ]
+
+    for sheet_idx in sheet_indexes:
+        x_offset = sheet_idx * (sw + sheet_gap)
+        lines.append(f'  <g id="sheet-{sheet_idx + 1}">')
+        lines.append(f'    <text class="sheet-title" x="{x_offset + 20}" y="35">Sheet {sheet_idx + 1}</text>')
+        lines.append(f'    <rect class="sheet-frame" x="{x_offset}" y="{title_band}" width="{sw}" height="{sh}"/>')
+        lines.append(f'  </g>')
+
     for i, p in enumerate(parts):
-        x, y, w, h = p.get("x", 0), p.get("y", 0), p["width"], p["height"]
+        sheet_idx = p.get("sheet", 0)
+        x_offset = sheet_idx * (sw + sheet_gap)
+        x = x_offset + p.get("x", 0)
+        y = title_band + p.get("y", 0)
+        w, h = p["width"], p["height"]
+        label_size = max(10, min(22, int(min(w, h) * 0.10)))
+        label_text = p["name"] if min(w, h) < 140 else f'{p["name"]} ({w}x{h})'
         lines.append(
-            f'  <g id="part-{i+1}" data-name="{p["name"]}">'
-            f'<rect x="{x}" y="{y}" width="{w}" height="{h}" fill="none" stroke="#000" stroke-width="2"/>'
-            f'<text x="{x + w/2}" y="{y + h/2}" font-size="20" text-anchor="middle" fill="#333">{p["name"]}</text>'
+            f'  <g id="part-{i+1}" data-name="{p["name"]}" data-sheet="{sheet_idx + 1}">'
+            f'<rect class="part-rect" x="{x}" y="{y}" width="{w}" height="{h}"/>'
+            f'<text class="part-label" x="{x + w/2}" y="{y + h/2}" font-size="{label_size}">{label_text}</text>'
             f'</g>'
         )
-    lines.append('</svg>')
-    return "\n".join(lines)
 
+    lines.append('</svg>')
+    return '\n'.join(lines)
 
 def generate_pdf_html(parts: List[Dict], nesting: NestingResult, params: DesignParams, design_name: str) -> str:
     """Generate HTML that can be converted to PDF cutting sheet"""
@@ -1113,13 +1116,13 @@ def generate_pdf_html(parts: List[Dict], nesting: NestingResult, params: DesignP
 </head>
 <body>
     <div class="header">
-        <h1>UltimateDesk CNC Pro</h1>
+        <h1>UltimateDesk</h1>
         <h2>{design_name}</h2>
         <p>Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}</p>
     </div>
     
     <div class="disclaimer">
-        <strong>⚠️ IMPORTANT SAFETY DISCLAIMER</strong><br>
+        <strong>âš ï¸ IMPORTANT SAFETY DISCLAIMER</strong><br>
         This cutting sheet is a REFERENCE DOCUMENT. All measurements should be verified before cutting.
         You are responsible for verifying toolpaths in your CAM software. UltimateDesk is not liable for
         machine damage, material waste, or injury from unverified cuts.
@@ -1214,13 +1217,178 @@ def generate_pdf_html(parts: List[Dict], nesting: NestingResult, params: DesignP
     </div>
     
     <div class="footer">
-        <p><strong>UltimateDesk CNC Pro</strong> - Professional CNC Desk Designer for Kiwi Makers</p>
+        <p><strong>UltimateDesk</strong> - Straight-frame desk build pack reference</p>
         <p>Questions? Email support@ultimatedesk.co.nz | Visit ultimatedesk.co.nz</p>
     </div>
 </body>
 </html>
 """
     return html
+
+def generate_pdf_bytes(parts: List[Dict], nesting: NestingResult, params: DesignParams, design_name: str) -> bytes:
+    """Generate a real PDF cutting sheet using reportlab."""
+    from io import BytesIO
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.lib.units import mm
+    from reportlab.pdfgen import canvas
+
+    buffer = BytesIO()
+    page_width, page_height = landscape(A4)
+    c = canvas.Canvas(buffer, pagesize=(page_width, page_height))
+    margin = 12 * mm
+
+    def draw_header(title: str):
+        c.setFillColor(colors.HexColor("#FF3B30"))
+        c.setFont("Helvetica-Bold", 18)
+        c.drawString(margin, page_height - margin, "UltimateDesk")
+        c.setFillColor(colors.black)
+        c.setFont("Helvetica-Bold", 14)
+        c.drawString(margin, page_height - margin - 8 * mm, title)
+        c.setFont("Helvetica", 9)
+        c.setFillColor(colors.HexColor("#666666"))
+        c.drawString(margin, page_height - margin - 13 * mm, f"Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
+
+    def draw_disclaimer(top_y: float):
+        box_h = 14 * mm
+        c.setFillColor(colors.HexColor("#FFF3CD"))
+        c.setStrokeColor(colors.HexColor("#FFE69C"))
+        c.roundRect(margin, top_y - box_h, page_width - 2 * margin, box_h, 3 * mm, fill=1, stroke=1)
+        c.setFillColor(colors.HexColor("#7A5A00"))
+        c.setFont("Helvetica-Bold", 8)
+        c.drawString(margin + 4 * mm, top_y - 5 * mm, "IMPORTANT")
+        c.setFillColor(colors.HexColor("#444444"))
+        c.setFont("Helvetica", 7)
+        c.drawString(margin + 28 * mm, top_y - 5 * mm, "Reference file only. Verify all dimensions and CAM toolpaths before cutting.")
+
+    def draw_specs(top_y: float):
+        box_w = (page_width - 2 * margin - 9 * mm) / 4
+        box_h = 16 * mm
+        specs = [
+            (f"{params.width}mm", "Width"),
+            (f"{params.depth}mm", "Depth"),
+            (f"{params.height}mm", "Height"),
+            (f"{nesting.sheets_required}", "Sheets"),
+            (f"{params.material_thickness}mm", "Material"),
+            (f"{nesting.waste_percentage}%", "Waste"),
+            (f"${nesting.sheets_required * 80:.0f}", "Material NZD"),
+            (f"{len(parts)}", "Parts"),
+        ]
+        x = margin
+        y = top_y
+        for i, (value, label) in enumerate(specs):
+            if i == 4:
+                x = margin
+                y = top_y - box_h - 4 * mm
+            c.setFillColor(colors.HexColor("#F5F5F5"))
+            c.setStrokeColor(colors.HexColor("#DDDDDD"))
+            c.roundRect(x, y - box_h, box_w, box_h, 2 * mm, fill=1, stroke=1)
+            c.setFillColor(colors.HexColor("#FF3B30"))
+            c.setFont("Helvetica-Bold", 11)
+            c.drawCentredString(x + box_w / 2, y - 6 * mm, value)
+            c.setFillColor(colors.HexColor("#666666"))
+            c.setFont("Helvetica", 7)
+            c.drawCentredString(x + box_w / 2, y - 11 * mm, label)
+            x += box_w + 3 * mm
+
+    draw_header(design_name)
+    draw_disclaimer(page_height - margin - 18 * mm)
+    draw_specs(page_height - margin - 38 * mm)
+
+    sheet_w, sheet_h = 2400, 1200
+    sheets_parts = {}
+    for part in parts:
+        sheet_idx = part.get("sheet", 0)
+        sheets_parts.setdefault(sheet_idx, []).append(part)
+
+    colors_cycle = [
+        colors.HexColor("#FDE2E4"),
+        colors.HexColor("#E2F0D9"),
+        colors.HexColor("#D9EAF7"),
+        colors.HexColor("#FFF2CC"),
+        colors.HexColor("#EADCF8"),
+        colors.HexColor("#D9F2E6"),
+    ]
+
+    for sheet_idx, sheet_parts in sorted(sheets_parts.items()):
+        c.showPage()
+        draw_header(f"{design_name} ? Sheet {sheet_idx + 1} of {nesting.sheets_required}")
+        c.setFont("Helvetica", 9)
+        c.setFillColor(colors.black)
+        c.drawString(margin, page_height - margin - 10 * mm, "2400mm x 1200mm sheet layout")
+
+        draw_x = margin
+        draw_y = 45 * mm
+        draw_w = page_width - 2 * margin
+        draw_h = page_height - 70 * mm
+        scale = min(draw_w / sheet_w, draw_h / sheet_h)
+
+        c.setFillColor(colors.HexColor("#D4A574"))
+        c.setStrokeColor(colors.black)
+        c.rect(draw_x, draw_y, sheet_w * scale, sheet_h * scale, fill=1, stroke=1)
+
+        for i, part in enumerate(sheet_parts):
+            px = draw_x + part.get("x", 0) * scale
+            py = draw_y + (sheet_h - part.get("y", 0) - part["height"]) * scale
+            pw = max(3, part["width"] * scale)
+            ph = max(3, part["height"] * scale)
+            c.setFillColor(colors_cycle[i % len(colors_cycle)])
+            c.setStrokeColor(colors.HexColor("#333333"))
+            c.rect(px, py, pw, ph, fill=1, stroke=1)
+            c.setFillColor(colors.black)
+            c.setFont("Helvetica", 6)
+            label = f"{part['name']} ({part['width']}x{part['height']})"
+            c.drawCentredString(px + pw / 2, py + ph / 2, label[:48])
+
+    c.showPage()
+    draw_header(f"{design_name} ? Parts List")
+    c.setFont("Helvetica-Bold", 9)
+    c.setFillColor(colors.black)
+
+    columns = [
+        ("#", 10 * mm),
+        ("Part Name", 68 * mm),
+        ("Width", 24 * mm),
+        ("Height", 24 * mm),
+        ("Sheet", 18 * mm),
+        ("Rotated", 22 * mm),
+    ]
+    x_positions = [margin]
+    for _, width in columns[:-1]:
+        x_positions.append(x_positions[-1] + width)
+
+    y = page_height - margin - 16 * mm
+    row_h = 8 * mm
+
+    def draw_row(values, bold=False):
+        nonlocal y
+        if y < 20 * mm:
+            c.showPage()
+            draw_header(f"{design_name} ? Parts List")
+            y = page_height - margin - 16 * mm
+        c.setFillColor(colors.HexColor("#F5F5F5") if bold else colors.white)
+        c.setStrokeColor(colors.HexColor("#DDDDDD"))
+        c.rect(margin, y - row_h + 1, sum(width for _, width in columns), row_h, fill=1, stroke=1)
+        c.setFillColor(colors.black)
+        c.setFont("Helvetica-Bold" if bold else "Helvetica", 8)
+        for idx, value in enumerate(values):
+            c.drawString(x_positions[idx] + 2 * mm, y - 5.5 * mm, str(value))
+        y -= row_h
+
+    draw_row([label for label, _ in columns], bold=True)
+    for i, part in enumerate(parts, start=1):
+        draw_row([
+            i,
+            part["name"],
+            part["width"],
+            part["height"],
+            part.get("sheet", 0) + 1,
+            "Yes" if part.get("rotated") else "No",
+        ])
+
+    c.save()
+    buffer.seek(0)
+    return buffer.getvalue()
 
 # ============== EXPORT ENDPOINTS ==============
 
@@ -1271,7 +1439,7 @@ async def check_export_access(request: Request):
 async def purchase_single_export(request: Request):
     """Create a Stripe checkout for a single export.
     Body: { origin_url, params, bundle, commercial_license, design_name }
-    Price is computed server-side from the pricing engine — NEVER trust client price.
+    Price is computed server-side from the pricing engine â€” NEVER trust client price.
     """
     body = await request.json()
     origin_url = body.get("origin_url", "")
@@ -1289,6 +1457,9 @@ async def purchase_single_export(request: Request):
     design_name = body.get("design_name", "UltimateDesk Design")
 
     user = await get_current_user(request)
+
+    if not HAS_EMERGENT_INTEGRATIONS:
+        raise HTTPException(status_code=503, detail="Stripe checkout unavailable in local mode")
 
     # Compute authoritative quote on the server
     parts = calculate_desk_parts(design_params)
@@ -1364,6 +1535,9 @@ async def purchase_pro_subscription(request: Request):
         raise HTTPException(status_code=400, detail="Origin URL required")
     
     user = await get_current_user(request)
+    
+    if not HAS_EMERGENT_INTEGRATIONS:
+        raise HTTPException(status_code=503, detail="Stripe checkout unavailable in local mode")
     
     api_key = os.environ.get("STRIPE_API_KEY")
     if not api_key:
@@ -1518,9 +1692,13 @@ async def download_export_file(export_id: str, file_type: str, request: Request)
         filename = f"{design_name}.svg"
         media_type = "image/svg+xml"
     elif file_type == "pdf":
-        content = export.get("pdf_html", "")
-        filename = f"{design_name}_cutting_sheet.html"
-        media_type = "text/html"
+        params = DesignParams(**export.get("params", {}))
+        config = CNCConfig()
+        parts = calculate_desk_parts(params)
+        nesting = simple_nesting(parts, config.sheet_width, config.sheet_height)
+        content = generate_pdf_bytes(nesting.parts, nesting, params, export.get("design_name", "UltimateDesk"))
+        filename = f"{design_name}_cutting_sheet.pdf"
+        media_type = "application/pdf"
     else:
         raise HTTPException(status_code=400, detail="Invalid file type")
 
@@ -1538,6 +1716,9 @@ async def download_export_file(export_id: str, file_type: str, request: Request)
 # Update webhook to handle new products
 @api_router.post("/webhook/stripe")
 async def stripe_webhook(request: Request):
+    if not HAS_EMERGENT_INTEGRATIONS:
+        raise HTTPException(status_code=503, detail="Stripe webhook unavailable in local mode")
+
     body = await request.body()
     sig = request.headers.get("Stripe-Signature")
     
@@ -1623,7 +1804,7 @@ async def list_bundles():
 
 @pricing_router.post("/quote", response_model=QuoteBreakdown)
 async def pricing_quote(body: QuoteRequestBody):
-    """Live quote — no auth required. Computes sheets + parts from params then prices."""
+    """Live quote â€” no auth required. Computes sheets + parts from params then prices."""
     parts = calculate_desk_parts(body.params)
     nesting = simple_nesting(parts, 2400, 1200)
     total_part_qty = sum(p.get("quantity", 1) for p in parts)
@@ -1716,7 +1897,7 @@ def _render_quote_html(doc: Dict[str, Any]) -> str:
         if q.get("commercial_license") else ""
     )
     return f"""<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><title>Quote — {design_name}</title>
+<html><head><meta charset="UTF-8"><title>Quote - {design_name}</title>
 <style>
  body {{ font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 760px; margin: 40px auto; color: #111; padding: 24px; }}
  h1 {{ color: #FF3B30; margin: 0 0 4px 0; letter-spacing: -0.02em; }}
@@ -1736,7 +1917,7 @@ def _render_quote_html(doc: Dict[str, Any]) -> str:
  .footer {{ margin-top: 32px; color: #888; font-size: 12px; border-top: 1px solid #eee; padding-top: 12px; }}
 </style></head>
 <body>
-  <h1>UltimateDesk CNC Pro</h1>
+  <h1>UltimateDesk</h1>
   <div class="meta">
     <span class="bundle-tag">{q['bundle_label']}</span>
     &nbsp;·&nbsp; Quote generated {doc['created_at'].strftime('%Y-%m-%d') if hasattr(doc.get('created_at',''), 'strftime') else ''}
@@ -1750,7 +1931,7 @@ def _render_quote_html(doc: Dict[str, Any]) -> str:
   </table>
 
   <div class="material">
-    <strong>Plywood (separate):</strong> {q.get('material_note', '')}
+    <strong>Material note:</strong> {q.get('material_note', '')}
   </div>
 
   <div class="total">
@@ -1761,17 +1942,17 @@ def _render_quote_html(doc: Dict[str, Any]) -> str:
   <button class="print-btn" onclick="window.print()">Save as PDF / Print</button>
 
   <div class="footer">
-    Design: {params.get('desk_type', 'custom')} · {params.get('width', 0)}×{params.get('depth', 0)}×{params.get('height', 0)} mm ·
+    Design: {params.get('desk_type', 'custom')} · {params.get('width', 0)} × {params.get('depth', 0)} × {params.get('height', 0)} mm ·
     {q['sheets_required']} sheet(s) · {q['part_count']} parts.<br>
     Export files include: {', '.join(q.get('bundle_files', []))}.<br>
-    This quote is valid for pricing guidance only. Verify all CNC toolpaths in your CAM software before cutting.
+    This quote is for pricing guidance and reference file generation only. Verify dimensions, toolpaths, tooling, feeds, origins and hold-down strategy in your CAM software before cutting.
   </div>
 </body></html>"""
 
 
 @pricing_router.get("/shared/{slug}/pdf")
 async def get_shared_quote_pdf(slug: str):
-    """Return an HTML document the browser can 'Save as PDF' — lightweight, no extra deps."""
+    """Return an HTML document the browser can 'Save as PDF' - lightweight, no extra deps."""
     doc = await db.shared_quotes.find_one({"slug": slug})
     if not doc:
         raise HTTPException(status_code=404, detail="Quote not found")
@@ -1834,7 +2015,7 @@ async def startup():
         logger.info(f"Admin user created: {admin_email}")
     
     # Write test credentials
-    creds_path = Path("/app/memory/test_credentials.md")
+    creds_path = ROOT_DIR.parent / "memory" / "test_credentials.md"
     creds_path.parent.mkdir(exist_ok=True)
     creds_path.write_text(f"""# Test Credentials
 
@@ -1855,3 +2036,4 @@ async def startup():
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
+
