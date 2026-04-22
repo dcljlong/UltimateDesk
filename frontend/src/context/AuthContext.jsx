@@ -13,6 +13,9 @@ const getApiUrl = () => {
 };
 const API = getApiUrl();
 
+const AuthContext = createContext(null);
+
+
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) {
