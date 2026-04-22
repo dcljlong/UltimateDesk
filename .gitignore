@@ -81,3 +81,22 @@ memory/test_credentials.md
 # Mobile development
 android-sdk/frontend/node_modules/.cache/default-development/0.pack
 frontend/node_modules/.cache/default-development/0.pack
+
+# --- Local env files ---
+backend/.env
+frontend/.env
+frontend/.env.local
+
+# --- Local backup files ---
+*.bak
+*.bak.*
+
+# --- Local scan / handover scratch files ---
+*_scan.txt
+
+# --- Local dependency/backups ---
+frontend/node_modules_backup_*/
+
+# --- OS / editor noise ---
+.DS_Store
+Thumbs.db
