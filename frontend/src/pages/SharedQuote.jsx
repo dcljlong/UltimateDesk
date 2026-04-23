@@ -236,7 +236,7 @@ export default function SharedQuote() {
           </div>
 
           <div className="mt-6 text-xs text-[var(--text-secondary)]">
-            Bundle includes: {q.bundle_files.map((f) => {
+            Bundle includes: {(q.bundle_files || []).map((f) => {
               const I = fileIconFor(f);
               return <span key={f} className="inline-flex items-center gap-1 mr-3"><I size={12} /> {f.toUpperCase()}</span>;
             })}
