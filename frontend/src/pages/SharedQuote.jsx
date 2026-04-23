@@ -155,8 +155,8 @@ export default function SharedQuote() {
     return <div className="min-h-screen flex items-center justify-center text-[var(--text-secondary)]">Loading quote...</div>;
   }
 
-  const q = doc.quote;
-  const p = doc.params;
+  const q = doc.quote || doc.pricing || {};
+  const p = doc.params || {};
 
   return (
     <div className="min-h-screen bg-[var(--background)] py-10 px-4">
@@ -178,18 +178,18 @@ export default function SharedQuote() {
           <div className="flex items-center justify-between mb-2">
             <span className="text-[10px] uppercase tracking-[0.2em] text-[var(--text-secondary)]">Quote</span>
             <span className="px-2.5 py-1 rounded-full bg-[var(--surface-elevated)] text-[10px] uppercase tracking-wider">
-              {q.bundle_label}
+              {q.bundle_label || 'Shared quote'}
             </span>
           </div>
           <h1 className="text-3xl font-black tracking-tight mb-1" data-testid="shared-quote-name">
             {doc.design_name}
           </h1>
           <p className="text-sm text-[var(--text-secondary)] mb-6" data-testid="shared-quote-headline">
-            {q.headline}
+            {q.headline || 'Quote details'}
           </p>
 
           <ul className="space-y-2.5 border-t border-[var(--border)] pt-4">
-            {q.line_items.map((li, i) => (
+            {(q.line_items || []).map((li, i) => (
               <li key={i} className="flex items-start justify-between gap-4 text-sm">
                 <div>
                   <div>{li.label}</div>
