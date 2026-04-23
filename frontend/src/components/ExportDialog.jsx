@@ -32,6 +32,8 @@ const getApiUrl = () => {
   }
   return '/api';
 };
+const API = getApiUrl();
+const API_ORIGIN = API.replace(/\/api$/, '');
 const FILE_META = {
   dxf:   { Icon: FileCode, label: 'DXF',    color: 'text-blue-500',  hint: 'CAD/CAM geometry' },
   svg:   { Icon: FileCode, label: 'SVG',    color: 'text-purple-500',hint: 'Vector cut layout' },

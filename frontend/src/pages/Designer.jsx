@@ -39,6 +39,7 @@ const getApiUrl = () => {
   }
   return '/api';
 };
+const API = getApiUrl();
 const defaultParams = {
   width: 1800,
   depth: 800,
