@@ -87,6 +87,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = async () => {
+  window.location.href = '/';
     try {
       await axios.post(`${API}/auth/logout`, {}, { withCredentials: true });
     } catch (error) {
@@ -121,3 +122,4 @@ export const AuthProvider = ({ children }) => {
 };
 
 export default AuthContext;
+
