@@ -684,6 +684,12 @@ Rules:
         safe_updates, validation_warnings = sanitize_ai_param_updates(param_updates)
         warnings.extend(validation_warnings)
 
+        if validation_warnings:
+            message = message.rstrip()
+            if not message.endswith((".", "!", "?")):
+                message += "."
+            message += " I have adjusted the final applied design to stay within UltimateDesk product limits."
+
         updated_dict = current_params.model_dump()
         extracted_changes = []
         for key, value in safe_updates.items():
@@ -2193,9 +2199,4 @@ async def startup():
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
-
-
-
-
-
 
