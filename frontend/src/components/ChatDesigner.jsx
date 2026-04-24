@@ -6,12 +6,11 @@ import { Input } from '../components/ui/input';
 import axios from 'axios';
 
 const getApiUrl = () => {
-  // Use window.location.origin to ensure same protocol
-  if (typeof window !== 'undefined' && window.location.protocol === 'https:') {
-    return window.location.origin + '/api';
-  }
   const baseUrl = process.env.REACT_APP_BACKEND_URL || '';
-  return baseUrl + '/api';
+  if (baseUrl) {
+    return baseUrl + '/api';
+  }
+  return '/api';
 };
 const API = getApiUrl();
 
@@ -262,5 +261,6 @@ const [pendingParams, setPendingParams] = useState(null);
 };
 
 export default ChatDesigner;
+
 
 
