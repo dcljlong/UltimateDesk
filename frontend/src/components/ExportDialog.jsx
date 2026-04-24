@@ -313,7 +313,7 @@ const ExportDialog = ({ isOpen, onClose, params, designName }) => {
                     }`}
                   >
                     <div className="flex items-center justify-between mb-1">
-                      <span className="font-bold text-sm">{b.label}</span>
+                      <span className="font-bold text-sm">{bundle === b.key ? '✓ ' : ''}{b.label}</span>
                       {b.multiplier !== 1 && (
                         <span className="text-xs text-[var(--text-secondary)]">×{b.multiplier}</span>
                       )}
@@ -530,4 +530,5 @@ const ExportDialog = ({ isOpen, onClose, params, designName }) => {
 };
 
 export default ExportDialog;
+
 

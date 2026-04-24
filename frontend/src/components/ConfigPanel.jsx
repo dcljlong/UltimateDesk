@@ -225,7 +225,7 @@ const ConfigPanel = ({ params, onParamsUpdate, className = '' }) => {
           : 'bg-neutral-800 text-gray-300 border-neutral-700 hover:border-red-400'
       }`}
     >
-      {t}
+      {params.desk_type === t ? '✓ ' : ''}{t}
     </button>
   ))}
 </div>
@@ -262,4 +262,5 @@ const ConfigPanel = ({ params, onParamsUpdate, className = '' }) => {
 };
 
 export default ConfigPanel;
+
 
