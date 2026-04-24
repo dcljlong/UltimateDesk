@@ -311,7 +311,7 @@ const Designer = () => {
               <Button 
                 variant="ghost" 
                 size="icon"
-                onClick={logout}
+                onClick={() => { logout(); window.location.href = '/'; }}
                 data-testid="logout-btn"
               >
                 <SignOut size={20} />
@@ -439,3 +439,4 @@ const Designer = () => {
 };
 
 export default Designer;
+

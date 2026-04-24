@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import { motion } from 'framer-motion';
 import { 
   Sliders, 
@@ -214,19 +214,21 @@ const ConfigPanel = ({ params, onParamsUpdate, className = '' }) => {
           <div className="space-y-4">
             <div>
               <Label className="mb-2 block">Desk Type</Label>
-              <Select
-                value={params.desk_type}
-                onValueChange={(v) => updateParam('desk_type', v)}
-              >
-                <SelectTrigger className="neu-surface" data-testid="select-desk-type">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="gaming">Gaming</SelectItem>
-                  <SelectItem value="studio">Studio</SelectItem>
-                  <SelectItem value="office">Office</SelectItem>
-                </SelectContent>
-              </Select>
+              <div className="flex gap-2">
+  {['gaming','studio','office'].map((t) => (
+    <button
+      key={t}
+      onClick={() => updateParam('desk_type', t)}
+      className={`px-3 py-2 rounded-lg border transition-all text-sm font-bold uppercase ${
+        params.desk_type === t
+          ? 'bg-red-600 text-white border-red-600 ring-2 ring-red-400'
+          : 'bg-neutral-800 text-gray-300 border-neutral-700 hover:border-red-400'
+      }`}
+    >
+      {t}
+    </button>
+  ))}
+</div>
             </div>
 
             <div className="neu-surface p-4 rounded-xl">
@@ -260,3 +262,4 @@ const ConfigPanel = ({ params, onParamsUpdate, className = '' }) => {
 };
 
 export default ConfigPanel;
+
