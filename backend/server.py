@@ -490,20 +490,33 @@ async def chat_design(chat_req: ChatRequest, request: Request):
         raise HTTPException(status_code=503, detail="AI chat unavailable in local mode")
     
     try:
-        api_key = os.environ.get("EMERGENT_LLM_KEY")
-        if not api_key:
-            raise HTTPException(status_code=500, detail="LLM API key not configured")
-        
-        chat = LlmChat(
-            api_key=api_key,
-            session_id=session_id,
-            system_message=DESK_DESIGNER_SYSTEM_PROMPT
-        ).with_model("gemini", "gemini-3-flash-preview")
-        
-        context = f"Current desk configuration: {current_params.model_dump_json()}\n\nUser request: {chat_req.message}"
-        user_message = UserMessage(text=context)
-        
-        response_text = await chat.send_message(user_message)
+        import google.generativeai as genai
+
+api_key = os.environ.get("GEMINI_API_KEY")
+if not api_key:
+    raise HTTPException(status_code=500, detail="GEMINI_API_KEY not set")
+
+genai.configure(api_key=api_key)
+
+model = genai.GenerativeModel("gemini-1.5-flash")
+
+prompt = f"""
+{DESK_DESIGNER_SYSTEM_PROMPT}
+
+Current desk configuration:
+{current_params.model_dump_json()}
+
+User request:
+{chat_req.message}
+
+Respond ONLY in JSON with:
+- updated_params
+- explanation
+- changes
+"""
+
+response = model.generate_content(prompt)
+response_text = response.text
         
         # Parse AI response
         try:
@@ -2036,5 +2049,6 @@ async def startup():
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
+
 
 
