@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+﻿import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { PaperPlaneTilt, Robot, User, Lightning, Sparkle } from '@phosphor-icons/react';
 import { Button } from '../components/ui/button';
@@ -76,7 +76,9 @@ const [pendingParams, setPendingParams] = useState(null);
         role: 'assistant',
         content: data.response,
         timestamp: new Date(),
-        changes: data.extracted_changes
+        changes: data.extracted_changes || [],
+        advice: data.advice || [],
+        warnings: data.warnings || []
       };
 
       setMessages(prev => [...prev, assistantMessage]);
@@ -154,21 +156,46 @@ const [pendingParams, setPendingParams] = useState(null);
                   }`}>
                     <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>
                     
-                    {/* Show extracted changes */}
-                    {msg.changes && msg.changes.length > 0 && (
-  <div className="mt-3 pt-3 border-t border-[var(--border)]">
-    <p className="text-xs text-[var(--text-secondary)] mb-2">Suggested changes:</p>
+                    {/* Show AI validation details */}
+                    {((msg.changes && msg.changes.length > 0) || (msg.advice && msg.advice.length > 0) || (msg.warnings && msg.warnings.length > 0)) && (
+  <div className="mt-3 pt-3 border-t border-[var(--border)] space-y-3">
+    {msg.changes && msg.changes.length > 0 && (
+      <div>
+        <p className="text-xs text-[var(--text-secondary)] mb-2">Suggested changes:</p>
+        <div className="flex flex-wrap gap-1">
+          {msg.changes.map((change, i) => (
+            <span
+              key={i}
+              className="text-xs font-mono bg-yellow-500/20 text-yellow-400 px-2 py-0.5 rounded"
+            >
+              {change}
+            </span>
+          ))}
+        </div>
+      </div>
+    )}
 
-    <div className="flex flex-wrap gap-1 mb-3">
-      {msg.changes.map((change, i) => (
-        <span
-          key={i}
-          className="text-xs font-mono bg-yellow-500/20 text-yellow-400 px-2 py-0.5 rounded"
-        >
-          {change}
-        </span>
-      ))}
-    </div>
+    {msg.advice && msg.advice.length > 0 && (
+      <div className="rounded-lg border border-blue-500/20 bg-blue-500/10 px-3 py-2 text-left">
+        <p className="text-xs font-semibold text-blue-300 mb-1">Advice</p>
+        <ul className="space-y-1">
+          {msg.advice.map((item, i) => (
+            <li key={i} className="text-xs text-[var(--text-secondary)]">• {item}</li>
+          ))}
+        </ul>
+      </div>
+    )}
+
+    {msg.warnings && msg.warnings.length > 0 && (
+      <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-left">
+        <p className="text-xs font-semibold text-amber-300 mb-1">Warnings / limits</p>
+        <ul className="space-y-1">
+          {msg.warnings.map((item, i) => (
+            <li key={i} className="text-xs text-[var(--text-secondary)]">• {item}</li>
+          ))}
+        </ul>
+      </div>
+    )}
 
     {pendingParams && (
       <Button
@@ -262,6 +289,7 @@ const [pendingParams, setPendingParams] = useState(null);
 };
 
 export default ChatDesigner;
+
 
 
 
