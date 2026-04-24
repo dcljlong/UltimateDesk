@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+﻿import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { PaperPlaneTilt, Robot, User, Lightning, Sparkle } from '@phosphor-icons/react';
 import { Button } from '../components/ui/button';
@@ -25,6 +25,7 @@ const ChatDesigner = ({ params, onParamsUpdate, className = '' }) => {
   ]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+const [pendingParams, setPendingParams] = useState(null);
   const [sessionId, setSessionId] = useState(null);
   const scrollRef = useRef(null);
   const messagesEndRef = useRef(null);
@@ -82,7 +83,7 @@ const ChatDesigner = ({ params, onParamsUpdate, className = '' }) => {
       setMessages(prev => [...prev, assistantMessage]);
       
       if (data.updated_params) {
-        onParamsUpdate(data.updated_params);
+        setPendingParams(data.updated_params);
       }
     } catch (error) {
       console.error('Chat error:', error);
@@ -156,17 +157,33 @@ const ChatDesigner = ({ params, onParamsUpdate, className = '' }) => {
                     
                     {/* Show extracted changes */}
                     {msg.changes && msg.changes.length > 0 && (
-                      <div className="mt-3 pt-3 border-t border-[var(--border)]">
-                        <p className="text-xs text-[var(--text-secondary)] mb-2">Changes applied:</p>
-                        <div className="flex flex-wrap gap-1">
-                          {msg.changes.map((change, i) => (
-                            <span 
-                              key={i} 
-                              className="text-xs font-mono bg-[var(--success)]/20 text-[var(--success)] px-2 py-0.5 rounded"
-                            >
-                              {change}
-                            </span>
-                          ))}
+  <div className="mt-3 pt-3 border-t border-[var(--border)]">
+    <p className="text-xs text-[var(--text-secondary)] mb-2">Suggested changes:</p>
+
+    <div className="flex flex-wrap gap-1 mb-3">
+      {msg.changes.map((change, i) => (
+        <span
+          key={i}
+          className="text-xs font-mono bg-yellow-500/20 text-yellow-400 px-2 py-0.5 rounded"
+        >
+          {change}
+        </span>
+      ))}
+    </div>
+
+    {pendingParams && (
+      <Button
+        onClick={() => {
+          onParamsUpdate(pendingParams);
+          setPendingParams(null);
+        }}
+        className="btn-primary text-xs px-3 py-1"
+      >
+        Apply Changes
+      </Button>
+    )}
+  </div>
+)}
                         </div>
                       </div>
                     )}
@@ -248,3 +265,4 @@ const ChatDesigner = ({ params, onParamsUpdate, className = '' }) => {
 };
 
 export default ChatDesigner;
+
