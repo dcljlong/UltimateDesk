@@ -1,4 +1,4 @@
-﻿import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { PaperPlaneTilt, Robot, User, Lightning, Sparkle } from '@phosphor-icons/react';
 import { Button } from '../components/ui/button';
@@ -14,7 +14,7 @@ const getApiUrl = () => {
 };
 const API = getApiUrl();
 
-const ChatDesigner = ({ params, onParamsUpdate, className = '' }) => {
+const ChatDesigner = ({ params, onParamsUpdate, onApplied, className = '' }) => {
   const [messages, setMessages] = useState([
     {
       role: 'assistant',
@@ -175,6 +175,7 @@ const [pendingParams, setPendingParams] = useState(null);
         onClick={() => {
           onParamsUpdate(pendingParams);
           setPendingParams(null);
+          if (onApplied) onApplied();
         }}
         className="btn-primary text-xs px-3 py-1"
       >
@@ -261,6 +262,7 @@ const [pendingParams, setPendingParams] = useState(null);
 };
 
 export default ChatDesigner;
+
 
 
 

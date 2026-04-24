@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { 
@@ -75,6 +75,7 @@ const Designer = () => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [activePanel, setActivePanel] = useState('config');
+  const [activeTab, setActiveTab] = useState('preview');
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [livePrice, setLivePrice] = useState(null);
@@ -362,7 +363,7 @@ const Designer = () => {
 
         {/* Main Canvas Area */}
         <main className="flex-1 flex flex-col overflow-hidden">
-          <Tabs defaultValue="preview" className="flex-1 flex flex-col">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
             <div className="flex items-center justify-between px-4 py-2 border-b border-[var(--border)]">
               <TabsList>
                 <TabsTrigger value="preview" className="gap-1" data-testid="tab-preview">
@@ -432,6 +433,7 @@ const Designer = () => {
               <ChatDesigner
                 params={params}
                 onParamsUpdate={handleParamsUpdate}
+                onApplied={() => setActiveTab('preview')}
               />
             </TabsContent>
           </Tabs>
@@ -449,6 +451,7 @@ const Designer = () => {
 };
 
 export default Designer;
+
 
 
 
