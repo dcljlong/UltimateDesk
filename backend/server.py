@@ -134,6 +134,8 @@ class ChatResponse(BaseModel):
     updated_params: DesignParams
     session_id: str
     extracted_changes: List[str] = []
+    advice: List[str] = []
+    warnings: List[str] = []
 
 class CNCConfig(BaseModel):
     bit_size: int = 6
@@ -227,7 +229,7 @@ async def register(user_data: UserCreate, response: Response):
     existing = await db.users.find_one({"email": email})
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
-    
+
     user_doc = {
         "email": email,
         "password_hash": hash_password(user_data.password),
@@ -238,13 +240,13 @@ async def register(user_data: UserCreate, response: Response):
     }
     result = await db.users.insert_one(user_doc)
     user_id = str(result.inserted_id)
-    
+
     access_token = create_access_token(user_id, email)
     refresh_token = create_refresh_token(user_id)
-    
+
     response.set_cookie(key="access_token", value=access_token, httponly=True, secure=True, samesite="none", max_age=900, path="/")
     response.set_cookie(key="refresh_token", value=refresh_token, httponly=True, secure=True, samesite="none", max_age=604800, path="/")
-    
+
     return UserResponse(
         id=user_id,
         email=email,
@@ -260,17 +262,17 @@ async def login(user_data: UserLogin, response: Response):
     user = await db.users.find_one({"email": email})
     if not user:
         raise HTTPException(status_code=401, detail="Invalid credentials")
-    
+
     if not verify_password(user_data.password, user["password_hash"]):
         raise HTTPException(status_code=401, detail="Invalid credentials")
-    
+
     user_id = str(user["_id"])
     access_token = create_access_token(user_id, email)
     refresh_token = create_refresh_token(user_id)
-    
+
     response.set_cookie(key="access_token", value=access_token, httponly=True, secure=True, samesite="none", max_age=900, path="/")
     response.set_cookie(key="refresh_token", value=refresh_token, httponly=True, secure=True, samesite="none", max_age=604800, path="/")
-    
+
     return UserResponse(
         id=user_id,
         email=user["email"],
@@ -310,7 +312,7 @@ async def refresh_token(request: Request, response: Response):
         user = await db.users.find_one({"_id": ObjectId(payload["sub"])})
         if not user:
             raise HTTPException(status_code=401, detail="User not found")
-        
+
         user_id = str(user["_id"])
         access_token = create_access_token(user_id, user["email"])
         response.set_cookie(key="access_token", value=access_token, httponly=True, secure=True, samesite="none", max_age=900, path="/")
@@ -451,7 +453,7 @@ When users describe their desk requirements, extract the parameters and provide 
 
 Available parameters you can modify:
 - width (mm, typically 1200-2400)
-- depth (mm, typically 600-1000)  
+- depth (mm, typically 600-1000)
 - height (mm, typically 700-800)
 - desk_type: "gaming", "studio", "office"
 - monitor_count (1-5)
@@ -473,7 +475,7 @@ Example response:
   "message": "Great choice! I'm setting up an 1800mm gaming desk with RGB channel routing and a headset hook. The RGB channels will be routed along the back edge for clean cable management.",
   "params": {
     "width": 1800,
-    "desk_type": "gaming", 
+    "desk_type": "gaming",
     "has_rgb_channels": true,
     "has_headset_hook": true
   }
@@ -481,11 +483,132 @@ Example response:
 
 Only include parameters that the user explicitly or implicitly requested to change. Be helpful and suggest complementary features when appropriate."""
 
+AI_BOOLEAN_KEYS = {
+    "has_rgb_channels",
+    "has_cable_management",
+    "has_headset_hook",
+    "has_gpu_tray",
+    "has_mixer_tray",
+    "has_pedal_tilt",
+    "has_vesa_mount",
+}
+
+AI_NUMERIC_LIMITS = {
+    "width": (1000, 2400),
+    "depth": (600, 1000),
+    "height": (680, 820),
+    "monitor_count": (1, 5),
+    "mixer_tray_width": (280, 1000),
+    "material_thickness": (15, 25),
+}
+
+AI_ENUM_LIMITS = {
+    "desk_type": {"gaming", "studio", "office"},
+    "leg_style": {"standard", "angular", "solid", "trestle"},
+    "joint_type": {"finger", "dovetail", "box"},
+}
+
+ALLOWED_AI_PARAM_KEYS = set(AI_BOOLEAN_KEYS) | set(AI_NUMERIC_LIMITS) | set(AI_ENUM_LIMITS) | {"custom_features"}
+
+
+def _coerce_bool(value):
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"true", "yes", "y", "1", "on", "add", "include", "enabled"}:
+            return True
+        if normalized in {"false", "no", "n", "0", "off", "remove", "exclude", "disabled"}:
+            return False
+    return None
+
+
+def _coerce_int(value):
+    try:
+        return int(round(float(value)))
+    except (TypeError, ValueError):
+        return None
+
+
+def _clean_text_list(value, max_items: int = 5, max_len: int = 80) -> List[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        raw_items = [value]
+    elif isinstance(value, list):
+        raw_items = value
+    else:
+        return []
+
+    cleaned = []
+    for item in raw_items:
+        text = str(item).strip()
+        if not text:
+            continue
+        cleaned.append(text[:max_len])
+        if len(cleaned) >= max_items:
+            break
+    return cleaned
+
+
+def clean_ai_list(value: Any) -> List[str]:
+    return _clean_text_list(value, max_items=6, max_len=140)
+
+
+def sanitize_ai_param_updates(param_updates: Dict[str, Any]):
+    safe_updates: Dict[str, Any] = {}
+    validation_warnings: List[str] = []
+
+    if not isinstance(param_updates, dict):
+        return safe_updates, ["AI did not return a valid params object."]
+
+    for key, value in param_updates.items():
+        if key not in ALLOWED_AI_PARAM_KEYS:
+            validation_warnings.append(f"Ignored unsupported design field: {key}")
+            continue
+
+        if key in AI_BOOLEAN_KEYS:
+            bool_value = _coerce_bool(value)
+            if bool_value is None:
+                validation_warnings.append(f"Ignored invalid true/false value for {key}.")
+                continue
+            safe_updates[key] = bool_value
+            continue
+
+        if key in AI_NUMERIC_LIMITS:
+            number_value = _coerce_int(value)
+            if number_value is None:
+                validation_warnings.append(f"Ignored invalid number for {key}.")
+                continue
+
+            min_value, max_value = AI_NUMERIC_LIMITS[key]
+            clamped_value = max(min_value, min(max_value, number_value))
+            if clamped_value != number_value:
+                validation_warnings.append(
+                    f"Adjusted {key} from {number_value} to {clamped_value} to stay inside current product limits."
+                )
+            safe_updates[key] = clamped_value
+            continue
+
+        if key in AI_ENUM_LIMITS:
+            enum_value = str(value).strip().lower()
+            if enum_value not in AI_ENUM_LIMITS[key]:
+                validation_warnings.append(f"Ignored unsupported {key}: {value}")
+                continue
+            safe_updates[key] = enum_value
+            continue
+
+        if key == "custom_features":
+            safe_updates[key] = _clean_text_list(value)
+
+    return safe_updates, validation_warnings
+
+
 @chat_router.post("/design", response_model=ChatResponse)
 async def chat_design(chat_req: ChatRequest, request: Request):
     session_id = chat_req.session_id or str(uuid.uuid4())
     current_params = chat_req.current_params or DesignParams()
-    
+
     try:
         import google.generativeai as genai
 
@@ -506,18 +629,32 @@ Current desk configuration:
 User request:
 {chat_req.message}
 
-Respond ONLY in JSON with:
+Respond ONLY in strict JSON with this exact shape:
 {{
-  "message": "short helpful explanation",
+  "message": "short helpful explanation of the proposed desk changes",
   "params": {{
     "width": 1800
-  }}
+  }},
+  "advice": [
+    "short practical design advice"
+  ],
+  "warnings": [
+    "short honest limitation or safety warning if needed"
+  ]
 }}
-Only include valid changed params in params.
+
+Rules:
+- params must only contain fields from the allowed parameter list.
+- Only include params the user requested or clearly implied.
+- Do not claim structural certification, engineering approval, or guaranteed machine-ready outputs.
+- Keep advice practical and relevant.
+- Put limitations, safety notes, CAM verification notes, or unsupported requests in warnings.
 """
 
         response = model.generate_content(prompt)
         response_text = response.text
+        advice = []
+        warnings = []
         # Parse AI response
         try:
             # Try to extract JSON from response
@@ -531,25 +668,30 @@ Only include valid changed params in params.
                 json_str = response_text[json_start:json_end]
             else:
                 json_str = response_text
-            
+
             ai_response = json.loads(json_str)
             message = ai_response.get("message", response_text)
             param_updates = ai_response.get("params", {})
+            advice = clean_ai_list(ai_response.get("advice", []))
+            warnings = clean_ai_list(ai_response.get("warnings", []))
         except (json.JSONDecodeError, Exception) as e:
             logger.warning(f"Failed to parse AI response as JSON: {e}")
             message = response_text
             param_updates = {}
-        
-        # Apply updates to current params
+            warnings.append("AI response could not be parsed as structured JSON.")
+
+        # Apply only validated AI updates to current params
+        safe_updates, validation_warnings = sanitize_ai_param_updates(param_updates)
+        warnings.extend(validation_warnings)
+
         updated_dict = current_params.model_dump()
         extracted_changes = []
-        for key, value in param_updates.items():
-            if key in updated_dict:
-                updated_dict[key] = value
-                extracted_changes.append(f"{key}: {value}")
-        
+        for key, value in safe_updates.items():
+            updated_dict[key] = value
+            extracted_changes.append(f"{key}: {value}")
+
         updated_params = DesignParams(**updated_dict)
-        
+
         # Store chat message
         await db.chat_sessions.update_one(
             {"session_id": session_id},
@@ -577,14 +719,16 @@ Only include valid changed params in params.
                 }
             }
         )
-        
+
         return ChatResponse(
             response=message,
             updated_params=updated_params,
             session_id=session_id,
-            extracted_changes=extracted_changes
+            extracted_changes=extracted_changes,
+            advice=advice,
+            warnings=warnings
         )
-        
+
     except Exception as e:
         logger.error(f"Chat error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -679,20 +823,20 @@ def simple_nesting(parts: List[Dict], sheet_width: int, sheet_height: int) -> Ne
     """Simple bin packing algorithm for sheet nesting"""
     # Add margin for cuts
     margin = 18
-    
+
     # Sort parts by area (largest first)
     sorted_parts = sorted(parts, key=lambda p: p["width"] * p["height"], reverse=True)
-    
+
     sheets = []
     current_sheet = {"parts": [], "spaces": [(0, 0, sheet_width, sheet_height)]}
-    
+
     total_part_area = 0
-    
+
     for part in sorted_parts:
         for _ in range(part.get("quantity", 1)):
             pw, ph = part["width"] + margin, part["height"] + margin
             total_part_area += part["width"] * part["height"]
-            
+
             placed = False
             for sheet in [current_sheet] + sheets:
                 for i, (x, y, sw, sh) in enumerate(sheet["spaces"]):
@@ -733,7 +877,7 @@ def simple_nesting(parts: List[Dict], sheet_width: int, sheet_height: int) -> Ne
                         break
                 if placed:
                     break
-            
+
             if not placed:
                 # Need new sheet
                 if current_sheet["parts"]:
@@ -749,19 +893,19 @@ def simple_nesting(parts: List[Dict], sheet_width: int, sheet_height: int) -> Ne
                     "rotated": False
                 })
                 current_sheet["spaces"] = [(pw, 0, sheet_width - pw, ph), (0, ph, sheet_width, sheet_height - ph)]
-    
+
     if current_sheet["parts"]:
         sheets.append(current_sheet)
-    
+
     total_sheet_area = len(sheets) * sheet_width * sheet_height
     waste = ((total_sheet_area - total_part_area) / total_sheet_area) * 100
-    
+
     all_parts = []
     for i, sheet in enumerate(sheets):
         for p in sheet["parts"]:
             p["sheet"] = i
             all_parts.append(p)
-    
+
     return NestingResult(
         sheets_required=len(sheets),
         waste_percentage=round(waste, 1),
@@ -786,15 +930,15 @@ def generate_gcode_preview(parts: List[Dict], config: CNCConfig) -> str:
         "G4 P2 ; Dwell 2 seconds",
         ""
     ]
-    
+
     feed_rate = 1500 if config.bit_size <= 6 else 1200
     plunge_rate = 300
-    
+
     for i, part in enumerate(parts):
         lines.append(f"; Part: {part['name']}")
         lines.append(f"G0 Z10 ; Safe height")
         lines.append(f"G0 X{part.get('x', 0)} Y{part.get('y', 0)} ; Move to start")
-        
+
         passes = math.ceil(config.material_thickness / config.cut_depth_per_pass)
         for p in range(passes):
             depth = min((p + 1) * config.cut_depth_per_pass, config.material_thickness)
@@ -804,7 +948,7 @@ def generate_gcode_preview(parts: List[Dict], config: CNCConfig) -> str:
             lines.append(f"G1 X{part.get('x', 0)}")
             lines.append(f"G1 Y{part.get('y', 0)}")
         lines.append("")
-    
+
     lines.extend([
         "",
         "G0 Z25 ; Raise to safe height",
@@ -812,27 +956,27 @@ def generate_gcode_preview(parts: List[Dict], config: CNCConfig) -> str:
         "G0 X0 Y0 ; Return to origin",
         "M30 ; Program end"
     ])
-    
+
     return "\n".join(lines)
 
 @cnc_router.post("/generate", response_model=CNCOutput)
 async def generate_cnc(params: DesignParams):
     config = CNCConfig()
-    
+
     parts = calculate_desk_parts(params)
     nesting = simple_nesting(parts, config.sheet_width, config.sheet_height)
-    
+
     # Calculate cut time (rough estimate)
     total_perimeter = sum(2 * (p["width"] + p["height"]) for p in parts for _ in range(p.get("quantity", 1)))
     passes = math.ceil(config.material_thickness / config.cut_depth_per_pass)
     feed_rate = 1500  # mm/min
     cut_time = (total_perimeter * passes) / feed_rate
-    
+
     # Material cost (NZ plywood ~$80/sheet for 18mm)
     material_cost = nesting.sheets_required * 80.0
-    
+
     gcode = generate_gcode_preview(nesting.parts, config)
-    
+
     return CNCOutput(
         nesting=nesting,
         estimated_cut_time_minutes=round(cut_time, 1),
@@ -846,7 +990,7 @@ async def material_estimate(width: int = 1800, depth: int = 800, height: int = 7
     params = DesignParams(width=width, depth=depth, height=height)
     parts = calculate_desk_parts(params)
     nesting = simple_nesting(parts, 2400, 1200)
-    
+
     return {
         "sheets_required": nesting.sheets_required,
         "waste_percentage": nesting.waste_percentage,
@@ -906,15 +1050,15 @@ def generate_full_gcode(parts: List[Dict], config: CNCConfig, design_name: str) 
         "G4 P3 ; Dwell 3 seconds for spindle to reach speed",
         ""
     ]
-    
+
     feed_rate = 1500 if config.bit_size <= 6 else 1200
     plunge_rate = 300
     safe_height = 10
-    
+
     for i, part in enumerate(parts):
         x, y = part.get('x', 0), part.get('y', 0)
         w, h = part['width'], part['height']
-        
+
         lines.append(f"; ----------------------------------------")
         lines.append(f"; Part {i+1}: {part['name']}")
         lines.append(f"; Dimensions: {w}mm x {h}mm")
@@ -922,10 +1066,10 @@ def generate_full_gcode(parts: List[Dict], config: CNCConfig, design_name: str) 
         if part.get('rotated'):
             lines.append(f"; Note: Part is ROTATED 90 degrees")
         lines.append(f"; ----------------------------------------")
-        
+
         lines.append(f"G0 Z{safe_height} ; Safe height")
         lines.append(f"G0 X{x} Y{y} ; Rapid to start position")
-        
+
         passes = math.ceil(config.material_thickness / config.cut_depth_per_pass)
         for p in range(passes):
             depth = min((p + 1) * config.cut_depth_per_pass, config.material_thickness)
@@ -936,10 +1080,10 @@ def generate_full_gcode(parts: List[Dict], config: CNCConfig, design_name: str) 
             lines.append(f"G1 Y{y + h}")
             lines.append(f"G1 X{x}")
             lines.append(f"G1 Y{y}")
-        
+
         lines.append(f"G0 Z{safe_height} ; Retract")
         lines.append("")
-    
+
     lines.extend([
         "; ========================================",
         "; Program End",
@@ -952,7 +1096,7 @@ def generate_full_gcode(parts: List[Dict], config: CNCConfig, design_name: str) 
         "; Thank you for using UltimateDesk!",
         "; Questions? support@ultimatedesk.co.nz"
     ])
-    
+
     return "\n".join(lines)
 
 def generate_dxf(parts: List[Dict], config: CNCConfig, design_name: str) -> str:
@@ -1092,7 +1236,7 @@ def generate_pdf_html(parts: List[Dict], nesting: NestingResult, params: DesignP
     """Generate HTML that can be converted to PDF cutting sheet"""
     sheet_w, sheet_h = 2400, 1200
     scale = 0.25  # Scale for visualization
-    
+
     # Group parts by sheet
     sheets_parts = {}
     for part in parts:
@@ -1100,7 +1244,7 @@ def generate_pdf_html(parts: List[Dict], nesting: NestingResult, params: DesignP
         if sheet_idx not in sheets_parts:
             sheets_parts[sheet_idx] = []
         sheets_parts[sheet_idx].append(part)
-    
+
     html = f"""<!DOCTYPE html>
 <html>
 <head>
@@ -1133,14 +1277,14 @@ def generate_pdf_html(parts: List[Dict], nesting: NestingResult, params: DesignP
         <h2>{design_name}</h2>
         <p>Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}</p>
     </div>
-    
+
     <div class="disclaimer">
         <strong>âš ï¸ IMPORTANT SAFETY DISCLAIMER</strong><br>
         This cutting sheet is a REFERENCE DOCUMENT. All measurements should be verified before cutting.
         You are responsible for verifying toolpaths in your CAM software. UltimateDesk is not liable for
         machine damage, material waste, or injury from unverified cuts.
     </div>
-    
+
     <div class="specs">
         <div class="spec-box">
             <div class="value">{params.width}mm</div>
@@ -1159,7 +1303,7 @@ def generate_pdf_html(parts: List[Dict], nesting: NestingResult, params: DesignP
             <div class="label">Sheets Required</div>
         </div>
     </div>
-    
+
     <div class="specs">
         <div class="spec-box">
             <div class="value">{params.material_thickness}mm</div>
@@ -1179,7 +1323,7 @@ def generate_pdf_html(parts: List[Dict], nesting: NestingResult, params: DesignP
         </div>
     </div>
 """
-    
+
     for sheet_idx, sheet_parts in sheets_parts.items():
         html += f"""
     <div class="sheet">
@@ -1198,7 +1342,7 @@ def generate_pdf_html(parts: List[Dict], nesting: NestingResult, params: DesignP
         </div>
     </div>
 """
-    
+
     html += """
     <div class="parts-list">
         <h3>Parts List</h3>
@@ -1212,7 +1356,7 @@ def generate_pdf_html(parts: List[Dict], nesting: NestingResult, params: DesignP
                 <th>Rotated</th>
             </tr>
 """
-    
+
     for i, part in enumerate(parts):
         html += f"""
             <tr>
@@ -1224,11 +1368,11 @@ def generate_pdf_html(parts: List[Dict], nesting: NestingResult, params: DesignP
                 <td>{'Yes' if part.get('rotated') else 'No'}</td>
             </tr>
 """
-    
+
     html += """
         </table>
     </div>
-    
+
     <div class="footer">
         <p><strong>UltimateDesk</strong> - Straight-frame desk build pack reference</p>
         <p>Questions? Email support@ultimatedesk.co.nz | Visit ultimatedesk.co.nz</p>
@@ -1543,27 +1687,27 @@ async def purchase_pro_subscription(request: Request):
     """Create checkout for Pro subscription ($19/mo)"""
     body = await request.json()
     origin_url = body.get("origin_url", "")
-    
+
     if not origin_url:
         raise HTTPException(status_code=400, detail="Origin URL required")
-    
+
     user = await get_current_user(request)
-    
+
     if not HAS_EMERGENT_INTEGRATIONS:
         raise HTTPException(status_code=503, detail="Stripe checkout unavailable in local mode")
-    
+
     api_key = os.environ.get("STRIPE_API_KEY")
     if not api_key:
         raise HTTPException(status_code=500, detail="Stripe not configured")
-    
+
     host_url = str(request.base_url).rstrip("/")
     webhook_url = f"{host_url}/api/webhook/stripe"
-    
+
     stripe_checkout = StripeCheckout(api_key=api_key, webhook_url=webhook_url)
-    
+
     success_url = f"{origin_url}/export/success?session_id={{CHECKOUT_SESSION_ID}}&type=pro"
     cancel_url = f"{origin_url}/pricing"
-    
+
     checkout_request = CheckoutSessionRequest(
         amount=PRO_MONTHLY_PRICE,
         currency="nzd",
@@ -1575,9 +1719,9 @@ async def purchase_pro_subscription(request: Request):
             "product": "pro_subscription"
         }
     )
-    
+
     session = await stripe_checkout.create_checkout_session(checkout_request)
-    
+
     await db.payment_transactions.insert_one({
         "session_id": session.session_id,
         "user_id": user["id"],
@@ -1589,7 +1733,7 @@ async def purchase_pro_subscription(request: Request):
         "payment_status": "initiated",
         "created_at": datetime.now(timezone.utc)
     })
-    
+
     return {"url": session.url, "session_id": session.session_id}
 
 @exports_router.post("/generate")
@@ -1674,24 +1818,24 @@ async def generate_export_files(export_req: ExportRequest, request: Request):
 async def download_export_file(export_id: str, file_type: str, request: Request):
     """Download a specific export file"""
     user = await get_current_user(request)
-    
+
     export = await db.exports.find_one({
         "export_id": export_id,
         "user_id": user["id"]
     })
-    
+
     if not export:
         raise HTTPException(status_code=404, detail="Export not found or expired")
-    
+
     if export.get("expires_at"):
         exp = export["expires_at"]
         if exp.tzinfo is None:
             exp = exp.replace(tzinfo=timezone.utc)
         if exp < datetime.now(timezone.utc):
             raise HTTPException(status_code=410, detail="Export has expired. Please generate new files.")
-    
+
     design_name = export.get("design_name", "UltimateDesk").replace(" ", "_")
-    
+
     if file_type == "gcode":
         content = export.get("gcode", "")
         filename = f"{design_name}.nc"
@@ -1717,7 +1861,7 @@ async def download_export_file(export_id: str, file_type: str, request: Request)
 
     if not content:
         raise HTTPException(status_code=404, detail=f"This bundle does not include a {file_type} file")
-    
+
     return Response(
         content=content,
         media_type=media_type,
@@ -1734,28 +1878,28 @@ async def stripe_webhook(request: Request):
 
     body = await request.body()
     sig = request.headers.get("Stripe-Signature")
-    
+
     api_key = os.environ.get("STRIPE_API_KEY")
     host_url = str(request.base_url).rstrip("/")
     webhook_url = f"{host_url}/api/webhook/stripe"
-    
+
     stripe_checkout = StripeCheckout(api_key=api_key, webhook_url=webhook_url)
-    
+
     try:
         event = await stripe_checkout.handle_webhook(body, sig)
-        
+
         if event.payment_status == "paid":
             transaction = await db.payment_transactions.find_one({"session_id": event.session_id})
-            
+
             if transaction:
                 await db.payment_transactions.update_one(
                     {"session_id": event.session_id},
                     {"$set": {"status": "complete", "payment_status": "paid", "completed_at": datetime.now(timezone.utc)}}
                 )
-                
+
                 product = transaction.get("product", "")
                 user_id = transaction.get("user_id")
-                
+
                 if user_id:
                     if product == "pro_subscription":
                         await db.users.update_one(
@@ -1777,7 +1921,7 @@ async def stripe_webhook(request: Request):
                             "used": False,
                             "created_at": datetime.now(timezone.utc),
                         })
-        
+
         return {"received": True}
     except Exception as e:
         logger.error(f"Webhook error: {e}")
@@ -2011,7 +2155,7 @@ async def startup():
     await db.designs.create_index("user_id")
     await db.chat_sessions.create_index("session_id")
     await db.payment_transactions.create_index("session_id")
-    
+
     # Seed admin
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@ultimatedesk.com")
     admin_password = os.environ.get("ADMIN_PASSWORD", "Admin123!")
@@ -2026,7 +2170,7 @@ async def startup():
             "created_at": datetime.now(timezone.utc)
         })
         logger.info(f"Admin user created: {admin_email}")
-    
+
     # Write test credentials
     creds_path = ROOT_DIR.parent / "memory" / "test_credentials.md"
     creds_path.parent.mkdir(exist_ok=True)
