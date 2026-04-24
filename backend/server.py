@@ -495,7 +495,7 @@ async def chat_design(chat_req: ChatRequest, request: Request):
 
         genai.configure(api_key=api_key)
 
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        model = genai.GenerativeModel("gemini-2.5-flash-lite")
 
         prompt = f"""
 {DESK_DESIGNER_SYSTEM_PROMPT}
@@ -2049,6 +2049,7 @@ async def startup():
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
+
 
 
 
