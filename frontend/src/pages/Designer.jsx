@@ -374,7 +374,10 @@ const Designer = () => {
                 <TabsTrigger value="gcode" className="gap-1" data-testid="tab-gcode">
                   <Code size={16} /> Toolpath
                 </TabsTrigger>
-              </TabsList>
+                <TabsTrigger value="ai" className="gap-1" data-testid="tab-ai">
+    🤖 AI Designer
+  </TabsTrigger>
+</TabsList>
               
               <div
                 className="px-3 py-2 rounded-lg border border-[var(--border)] bg-[var(--surface)] text-xs font-mono"
@@ -446,6 +449,7 @@ const Designer = () => {
 };
 
 export default Designer;
+
 
 
 
