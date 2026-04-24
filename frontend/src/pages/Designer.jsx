@@ -27,6 +27,7 @@ import DeskPreview3D from '../components/DeskPreview3D';
 import ConfigPanel from '../components/ConfigPanel';
 import NestingViewer from '../components/NestingViewer';
 import ExportDialog from '../components/ExportDialog';
+import ChatDesigner from '../components/ChatDesigner';
 import axios from 'axios';
 
 const getApiUrl = () => {
@@ -424,6 +425,12 @@ const Designer = () => {
                 </div>
               )}
             </TabsContent>
+                      <TabsContent value=""ai"" className=""flex-1 m-0 p-4 overflow-auto"">
+              <ChatDesigner
+                params={params}
+                onParamsUpdate={handleParamsUpdate}
+              />
+            </TabsContent>
           </Tabs>
         </main>
       </div>
@@ -439,4 +446,7 @@ const Designer = () => {
 };
 
 export default Designer;
+
+
+
 
