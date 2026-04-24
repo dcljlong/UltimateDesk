@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   ArrowsOutSimple,
@@ -21,6 +21,8 @@ const DeskPreview3D = ({ params, className = '' }) => {
 
   const [exploded, setExploded] = useState(false);
   const [showDimensions, setShowDimensions] = useState(false);
+  const [viewTransform, setViewTransform] = useState({ panX: 0, panY: 0, zoom: 1 });
+  const dragStartRef = useRef(null);
   const canvasRef = useRef(null);
 
   const colorSchemes = {
@@ -78,13 +80,14 @@ const DeskPreview3D = ({ params, className = '' }) => {
     const explodeLift = exploded ? 26 : 0;
     const explodeSpread = exploded ? 32 : 0;
 
-    const unit = Math.min(
+    const baseUnit = Math.min(
       (widthPx * 0.56) / (deskWidth + deskDepth + 260),
       (heightPx * 0.66) / (deskHeight + deskDepth * 0.25 + 240)
     );
+    const unit = baseUnit * viewTransform.zoom;
 
-    const centerX = widthPx * 0.53;
-    const floorY = heightPx * 0.84;
+    const centerX = widthPx * 0.53 + viewTransform.panX;
+    const floorY = heightPx * 0.84 + viewTransform.panY;
     const isoX = 0.58 * unit;
     const isoY = 0.22 * unit;
 
@@ -571,7 +574,7 @@ const DeskPreview3D = ({ params, className = '' }) => {
       }
       ctx.restore();
     }
-  }, [colors, exploded, isProtected, params, watermarkText]);
+  }, [colors, exploded, isProtected, params, viewTransform, watermarkText]);
 
   const roundToRange = (value, step = 50) => `~${Math.round(value / step) * step}`;
   const fmtDim = (value) => (isProtected ? roundToRange(value) : `${value}`);
@@ -583,6 +586,45 @@ const DeskPreview3D = ({ params, className = '' }) => {
   if (params.has_headset_hook) activeFeatures.push({ icon: Headphones, label: 'Hook' });
   if (params.has_gpu_tray) activeFeatures.push({ icon: Cube, label: 'GPU tray' });
   if (params.has_vesa_mount) activeFeatures.push({ icon: Monitor, label: 'VESA' });
+
+  const handlePointerDown = (event) => {
+    dragStartRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      panX: viewTransform.panX,
+      panY: viewTransform.panY,
+    };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  };
+
+  const handlePointerMove = (event) => {
+    if (!dragStartRef.current) return;
+
+    const start = dragStartRef.current;
+    setViewTransform((prev) => ({
+      ...prev,
+      panX: start.panX + (event.clientX - start.startX),
+      panY: start.panY + (event.clientY - start.startY),
+    }));
+  };
+
+  const stopDragging = (event) => {
+    if (dragStartRef.current?.pointerId === event.pointerId) {
+      event.currentTarget.releasePointerCapture?.(event.pointerId);
+    }
+    dragStartRef.current = null;
+  };
+
+  const handleWheel = (event) => {
+    event.preventDefault();
+
+    const zoomDelta = event.deltaY > 0 ? -0.08 : 0.08;
+    setViewTransform((prev) => ({
+      ...prev,
+      zoom: Math.min(1.8, Math.max(0.65, Number((prev.zoom + zoomDelta).toFixed(2)))),
+    }));
+  };
 
   return (
     <div
@@ -693,17 +735,26 @@ const DeskPreview3D = ({ params, className = '' }) => {
 
       <div className="absolute bottom-4 right-4 z-10 glass-surface rounded-lg px-3 py-2 flex items-center gap-2">
         <Cube size={16} className="text-[var(--primary)]" />
-        <span className="text-xs font-medium">Export-aligned preview</span>
+        <span className="text-xs font-medium">Drag / scroll to inspect</span>
       </div>
 
       <canvas
         ref={canvasRef}
         width={900}
         height={600}
-        className="pointer-events-none w-full h-full object-contain rounded-lg"
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={stopDragging}
+        onPointerLeave={stopDragging}
+        onWheel={handleWheel}
+        onDoubleClick={() => setViewTransform({ panX: 0, panY: 0, zoom: 1 })}
+        title="Drag to move, mouse wheel to zoom, double-click to reset"
+        style={{ touchAction: 'none' }}
+        className="w-full h-full object-contain rounded-lg cursor-grab active:cursor-grabbing"
       />
     </div>
   );
 };
 
 export default DeskPreview3D;
+
