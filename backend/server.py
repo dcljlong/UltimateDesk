@@ -1,4 +1,4 @@
-﻿from dotenv import load_dotenv
+from dotenv import load_dotenv
 load_dotenv()
 
 from fastapi import FastAPI, APIRouter, HTTPException, Request, Depends, Response
@@ -104,6 +104,9 @@ class DesignParams(BaseModel):
     leg_style: str = "standard"
     joint_type: str = "finger"
     material_thickness: int = 18
+    is_oversize: bool = False
+    desktop_split_count: int = 1
+    requires_centre_support: bool = False
     custom_features: List[str] = []
 
 class DesignCreate(BaseModel):
@@ -452,7 +455,7 @@ When users describe their desk requirements, extract the parameters and provide 
 2. "params": An object with ONLY the parameters that should be CHANGED based on the user's request
 
 Available parameters you can modify:
-- width (mm, typically 1200-2400)
+- width (mm, standard 1000-2400; oversize mode 2401-3000)
 - depth (mm, typically 600-1000)
 - height (mm, typically 700-800)
 - desk_type: "gaming", "studio", "office"
@@ -467,6 +470,9 @@ Available parameters you can modify:
 - has_vesa_mount (true/false)
 - leg_style: "standard", "angular", "solid", "trestle"
 - joint_type: "finger", "dovetail", "box"
+- is_oversize (true/false)
+- desktop_split_count (1 for standard, 2 for oversize split desktop)
+- requires_centre_support (true/false)
 - custom_features (array of strings)
 
 Example user: "I want a gaming desk 1800mm wide with RGB and a headset hook"
@@ -491,15 +497,18 @@ AI_BOOLEAN_KEYS = {
     "has_mixer_tray",
     "has_pedal_tilt",
     "has_vesa_mount",
+    "is_oversize",
+    "requires_centre_support",
 }
 
 AI_NUMERIC_LIMITS = {
-    "width": (1000, 2400),
+    "width": (1000, 3000),
     "depth": (600, 1000),
     "height": (680, 820),
     "monitor_count": (1, 5),
     "mixer_tray_width": (280, 1000),
     "material_thickness": (15, 25),
+    "desktop_split_count": (1, 2),
 }
 
 AI_ENUM_LIMITS = {
@@ -600,6 +609,15 @@ def sanitize_ai_param_updates(param_updates: Dict[str, Any]):
 
         if key == "custom_features":
             safe_updates[key] = _clean_text_list(value)
+
+    requested_width = safe_updates.get("width")
+    if isinstance(requested_width, int) and requested_width > 2400:
+        safe_updates["is_oversize"] = True
+        safe_updates["desktop_split_count"] = 2
+        safe_updates["requires_centre_support"] = True
+        validation_warnings.append(
+            "Oversize desk mode enabled: desktop will be split into two panels with centre support."
+        )
 
     return safe_updates, validation_warnings
 
@@ -771,17 +789,42 @@ def calculate_desk_parts(params: DesignParams) -> List[Dict[str, Any]]:
             "type": kind,
         })
 
-    add_part("Desktop Top", width, depth)
+    is_oversize = bool(getattr(params, "is_oversize", False)) or width > 2400
+    desktop_split_count = 2 if is_oversize else 1
+    requires_centre_support = bool(getattr(params, "requires_centre_support", False)) or is_oversize
+
+    if desktop_split_count > 1:
+        left_top_w = int(math.ceil(width / 2))
+        right_top_w = width - left_top_w
+        add_part("Desktop Top Left Panel", left_top_w, depth)
+        add_part("Desktop Top Right Panel", right_top_w, depth)
+        add_part("Desktop Centre Join Plate", 180, max(300, min(depth - 120, 650)))
+    else:
+        add_part("Desktop Top", width, depth)
 
     add_part("Leg Post FL", leg_size, height - t)
     add_part("Leg Post FR", leg_size, height - t)
     add_part("Leg Post RL", leg_size, height - t)
     add_part("Leg Post RR", leg_size, height - t)
 
-    add_part("Rear Upper Rail", clear_span_x, 42)
-    add_part("Front Lower Rail", clear_span_x, 30)
+    if is_oversize:
+        rear_left = int(math.ceil(clear_span_x / 2))
+        rear_right = clear_span_x - rear_left
+        add_part("Rear Upper Rail Left", rear_left, 42)
+        add_part("Rear Upper Rail Right", rear_right, 42)
+        add_part("Front Lower Rail Left", rear_left, 30)
+        add_part("Front Lower Rail Right", rear_right, 30)
+    else:
+        add_part("Rear Upper Rail", clear_span_x, 42)
+        add_part("Front Lower Rail", clear_span_x, 30)
+
     add_part("Left Side Rail", clear_span_y, 30)
     add_part("Right Side Rail", clear_span_y, 30)
+
+    if requires_centre_support:
+        add_part("Centre Support Post", leg_size, height - t)
+        add_part("Centre Support Foot", 320, 90)
+        add_part("Centre Under-Top Support Rail", max(420, min(int(width * 0.32), 900)), 55)
 
     back_panel_w = max(600, clear_span_x - 40)
     back_panel_h = 180 if params.desk_type == "office" else 220
