@@ -425,7 +425,7 @@ const Designer = () => {
                 </div>
               )}
             </TabsContent>
-                      <TabsContent value=""ai"" className=""flex-1 m-0 p-4 overflow-auto"">
+                      <TabsContent value="ai" className="flex-1 m-0 p-4 overflow-auto">
               <ChatDesigner
                 params={params}
                 onParamsUpdate={handleParamsUpdate}
@@ -446,6 +446,8 @@ const Designer = () => {
 };
 
 export default Designer;
+
+
 
 
 

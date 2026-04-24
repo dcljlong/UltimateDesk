@@ -184,9 +184,6 @@ const [pendingParams, setPendingParams] = useState(null);
     )}
   </div>
 )}
-                        </div>
-                      </div>
-                    )}
                   </div>
                   <p className="text-xs text-[var(--text-secondary)] mt-1">
                     {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -265,4 +262,5 @@ const [pendingParams, setPendingParams] = useState(null);
 };
 
 export default ChatDesigner;
+
 
