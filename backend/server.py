@@ -486,21 +486,18 @@ async def chat_design(chat_req: ChatRequest, request: Request):
     session_id = chat_req.session_id or str(uuid.uuid4())
     current_params = chat_req.current_params or DesignParams()
     
-    if not HAS_EMERGENT_INTEGRATIONS:
-        raise HTTPException(status_code=503, detail="AI chat unavailable in local mode")
-    
     try:
         import google.generativeai as genai
 
-api_key = os.environ.get("GEMINI_API_KEY")
-if not api_key:
-    raise HTTPException(status_code=500, detail="GEMINI_API_KEY not set")
+        api_key = os.environ.get("GEMINI_API_KEY")
+        if not api_key:
+            raise HTTPException(status_code=500, detail="GEMINI_API_KEY not set")
 
-genai.configure(api_key=api_key)
+        genai.configure(api_key=api_key)
 
-model = genai.GenerativeModel("gemini-1.5-flash")
+        model = genai.GenerativeModel("gemini-1.5-flash")
 
-prompt = f"""
+        prompt = f"""
 {DESK_DESIGNER_SYSTEM_PROMPT}
 
 Current desk configuration:
@@ -510,14 +507,17 @@ User request:
 {chat_req.message}
 
 Respond ONLY in JSON with:
-- updated_params
-- explanation
-- changes
+{{
+  "message": "short helpful explanation",
+  "params": {{
+    "width": 1800
+  }}
+}}
+Only include valid changed params in params.
 """
 
-response = model.generate_content(prompt)
-response_text = response.text
-        
+        response = model.generate_content(prompt)
+        response_text = response.text
         # Parse AI response
         try:
             # Try to extract JSON from response
@@ -2049,6 +2049,7 @@ async def startup():
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
+
 
 
 
