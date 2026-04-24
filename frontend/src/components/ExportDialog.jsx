@@ -144,7 +144,12 @@ const ExportDialog = ({ isOpen, onClose, params, designName }) => {
       setExportResult(data);
       checkAccess(); // refresh credit count
     } catch (e) {
-      setError(e.response?.data?.detail || 'Failed to generate export files');
+      const msg = e.response?.data?.detail;
+      if (msg === 'Not authenticated') {
+        setError('Please sign in to download files');
+      } else {
+        setError(msg || 'Failed to generate export files');
+      }
     } finally {
       setIsGenerating(false);
     }
@@ -525,3 +530,4 @@ const ExportDialog = ({ isOpen, onClose, params, designName }) => {
 };
 
 export default ExportDialog;
+

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { 
@@ -40,7 +40,7 @@ const Library = () => {
 
   useEffect(() => {
     if (!isAuthenticated) {
-      navigate('/auth', { state: { from: { pathname: '/library' } } });
+      setLoading(false);
       return;
     }
     fetchDesigns();
@@ -123,6 +123,21 @@ const Library = () => {
 
       {/* Content */}
       <main className="max-w-7xl mx-auto px-4 py-8">
+        {!isAuthenticated && (
+          <div className="neu-surface p-6 rounded-xl text-center mb-8">
+            <h2 className="text-xl font-bold mb-2">Sign in to view your designs</h2>
+            <p className="text-[var(--text-secondary)] mb-4">
+              Your saved desk designs will appear here.
+            </p>
+            <Button
+              onClick={() => navigate('/auth', { state: { from: { pathname: '/library' } } })}
+              className="btn-primary"
+            >
+              Sign In
+            </Button>
+          </div>
+        )}
+
         {/* Actions */}
         <div className="flex items-center justify-between mb-8">
           <h1 className="text-2xl font-black tracking-tight">Your Saved Designs</h1>
@@ -188,7 +203,7 @@ const Library = () => {
                   <div className="absolute bottom-4 left-4 right-4">
                     <div className="flex items-center gap-2 text-sm font-mono text-[var(--text-secondary)]">
                       <span>{design.params.width}mm</span>
-                      <span>×</span>
+                      <span>Ã—</span>
                       <span>{design.params.depth}mm</span>
                     </div>
                   </div>
@@ -207,7 +222,22 @@ const Library = () => {
                     <span>{formatDate(design.updated_at)}</span>
                   </div>
 
-                  {/* Actions */}
+                  {!isAuthenticated && (
+          <div className="neu-surface p-6 rounded-xl text-center mb-8">
+            <h2 className="text-xl font-bold mb-2">Sign in to view your designs</h2>
+            <p className="text-[var(--text-secondary)] mb-4">
+              Your saved desk designs will appear here.
+            </p>
+            <Button
+              onClick={() => navigate('/auth', { state: { from: { pathname: '/library' } } })}
+              className="btn-primary"
+            >
+              Sign In
+            </Button>
+          </div>
+        )}
+
+        {/* Actions */}
                   <div className="flex items-center gap-2">
                     <Button
                       variant="outline"
@@ -267,3 +297,4 @@ const Library = () => {
 };
 
 export default Library;
+
