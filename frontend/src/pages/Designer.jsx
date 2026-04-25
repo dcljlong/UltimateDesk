@@ -403,6 +403,10 @@ const Designer = () => {
               <NestingViewer nestingData={cncOutput?.nesting} cncOutput={cncOutput} />
             </TabsContent>
             
+            <TabsContent value="buildviews" className="flex-1 m-0 overflow-auto">
+              <BuildViews2D params={params} />
+            </TabsContent>
+
             <TabsContent value="gcode" className="flex-1 m-0 p-4 overflow-auto">
               {cncOutput?.gcode_preview ? (
                 <div className="space-y-4">
