@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+﻿import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { 
@@ -204,7 +204,7 @@ const Designer = () => {
     setExportDialogOpen(true);
   };
 
-  // Live price pill â€” refreshes when design changes
+  // Live price pill Ã¢â‚¬â€ refreshes when design changes
   useEffect(() => {
     const t = setTimeout(async () => {
       try {
@@ -381,7 +381,7 @@ const Designer = () => {
                   <Code size={16} /> Toolpath
                 </TabsTrigger>
                 <TabsTrigger value="ai" className="gap-1" data-testid="tab-ai">
-    🤖 AI Designer
+    ðŸ¤– AI Designer
   </TabsTrigger>
 </TabsList>
               
@@ -460,3 +460,4 @@ const Designer = () => {
 };
 
 export default Designer;
+
