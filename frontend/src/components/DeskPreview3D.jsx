@@ -77,6 +77,10 @@ const DeskPreview3D = ({ params, className = '' }) => {
     const backPanelH = params.desk_type === 'office' ? 180 : 220;
     const trayW = Math.max(500, Math.min(deskWidth - (legInsetX * 2) - 120, Math.round(deskWidth * 0.60)));
 
+    const isOversize = Boolean(params.is_oversize) || deskWidth > 2400;
+    const desktopSplitCount = isOversize ? Math.max(2, params.desktop_split_count || 2) : 1;
+    const requiresCentreSupport = Boolean(params.requires_centre_support) || isOversize;
+
     const explodeLift = exploded ? 26 : 0;
     const explodeSpread = exploded ? 32 : 0;
 
@@ -315,6 +319,37 @@ const DeskPreview3D = ({ params, className = '' }) => {
       edgeColor: 'rgba(0,0,0,0.18)',
     });
 
+    // Centre support for oversize split desks
+    if (requiresCentreSupport) {
+      const centreRailW = Math.max(420, Math.min(Math.round(deskWidth * 0.32), 900));
+
+      drawCuboid({
+        x: -legSize / 2,
+        y: 0,
+        z: -legSize / 2,
+        w: legSize,
+        h: deskHeight - t - explodeLift,
+        d: legSize,
+        topColor: frameTop,
+        rightColor: frameRight,
+        frontColor: frameFront,
+        edgeColor: 'rgba(0,0,0,0.18)',
+      });
+
+      drawCuboid({
+        x: -centreRailW / 2,
+        y: deskHeight - 88,
+        z: -t / 2,
+        w: centreRailW,
+        h: 55,
+        d: t,
+        topColor: frameTop,
+        rightColor: frameRight,
+        frontColor: frameFront,
+        edgeColor: 'rgba(0,0,0,0.18)',
+      });
+    }
+
     // Back modesty panel
     drawCuboid({
       x: -backPanelW / 2,
@@ -545,18 +580,62 @@ const DeskPreview3D = ({ params, className = '' }) => {
     }
 
     // Desktop top
-    drawCuboid({
-      x: -deskWidth / 2,
-      y: deskHeight - explodeLift,
-      z: -deskDepth / 2,
-      w: deskWidth,
-      h: t,
-      d: deskDepth,
-      topColor: topGradient,
-      rightColor: shadeHex(colors.side, -4),
-      frontColor: shadeHex(colors.side, -16),
-      edgeColor: 'rgba(0,0,0,0.20)',
-    });
+    if (desktopSplitCount > 1) {
+      const leftTopW = Math.ceil(deskWidth / 2);
+      const rightTopW = deskWidth - leftTopW;
+
+      drawCuboid({
+        x: -deskWidth / 2,
+        y: deskHeight - explodeLift,
+        z: -deskDepth / 2,
+        w: leftTopW,
+        h: t,
+        d: deskDepth,
+        topColor: topGradient,
+        rightColor: shadeHex(colors.side, -4),
+        frontColor: shadeHex(colors.side, -16),
+        edgeColor: 'rgba(0,0,0,0.20)',
+      });
+
+      drawCuboid({
+        x: -deskWidth / 2 + leftTopW,
+        y: deskHeight - explodeLift,
+        z: -deskDepth / 2,
+        w: rightTopW,
+        h: t,
+        d: deskDepth,
+        topColor: topGradient,
+        rightColor: shadeHex(colors.side, -4),
+        frontColor: shadeHex(colors.side, -16),
+        edgeColor: 'rgba(0,0,0,0.20)',
+      });
+
+      drawCuboid({
+        x: -4,
+        y: deskHeight - explodeLift + 2,
+        z: -deskDepth / 2,
+        w: 8,
+        h: t + 4,
+        d: deskDepth,
+        topColor: colors.accentSoft,
+        rightColor: colors.accent,
+        frontColor: shadeHex(colors.accent, -16),
+        edgeColor: 'rgba(0,0,0,0.24)',
+      });
+    } else {
+      drawCuboid({
+        x: -deskWidth / 2,
+        y: deskHeight - explodeLift,
+        z: -deskDepth / 2,
+        w: deskWidth,
+        h: t,
+        d: deskDepth,
+        topColor: topGradient,
+        rightColor: shadeHex(colors.side, -4),
+        frontColor: shadeHex(colors.side, -16),
+        edgeColor: 'rgba(0,0,0,0.20)',
+      });
+    }
 
     if (isProtected) {
       ctx.save();
@@ -586,6 +665,8 @@ const DeskPreview3D = ({ params, className = '' }) => {
   if (params.has_headset_hook) activeFeatures.push({ icon: Headphones, label: 'Hook' });
   if (params.has_gpu_tray) activeFeatures.push({ icon: Cube, label: 'GPU tray' });
   if (params.has_vesa_mount) activeFeatures.push({ icon: Monitor, label: 'VESA' });
+  if (params.is_oversize || params.width > 2400) activeFeatures.push({ icon: Cube, label: 'Split top' });
+  if (params.requires_centre_support || params.is_oversize || params.width > 2400) activeFeatures.push({ icon: Cube, label: 'Centre support' });
 
   const handlePointerDown = (event) => {
     dragStartRef.current = {
@@ -664,6 +745,11 @@ const DeskPreview3D = ({ params, className = '' }) => {
         <span className="px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider bg-white/85 text-slate-700 shadow-sm">
           Straight frame
         </span>
+        {(params.is_oversize || params.width > 2400) && (
+          <span className="px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider bg-amber-500 text-white shadow-lg">
+            Oversize split top
+          </span>
+        )}
       </div>
 
       {activeFeatures.length > 0 && (
@@ -707,6 +793,18 @@ const DeskPreview3D = ({ params, className = '' }) => {
               <span className="text-[var(--text-secondary)]">Material:</span>
               <span className="font-bold">{fmtMat(params.material_thickness)}mm</span>
             </div>
+            {(params.is_oversize || params.width > 2400) && (
+              <>
+                <div className="flex justify-between gap-4 pt-1 border-t border-[var(--border)]">
+                  <span className="text-[var(--text-secondary)]">Split top:</span>
+                  <span className="font-bold">{params.desktop_split_count || 2} panels</span>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <span className="text-[var(--text-secondary)]">Centre support:</span>
+                  <span className="font-bold">Required</span>
+                </div>
+              </>
+            )}
           </div>
         </motion.div>
       )}
@@ -757,4 +855,3 @@ const DeskPreview3D = ({ params, className = '' }) => {
 };
 
 export default DeskPreview3D;
-

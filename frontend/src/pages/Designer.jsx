@@ -58,6 +58,9 @@ const defaultParams = {
   leg_style: 'standard',
   joint_type: 'finger',
   material_thickness: 18,
+  is_oversize: false,
+  desktop_split_count: 1,
+  requires_centre_support: false,
   custom_features: []
 };
 
@@ -451,12 +454,3 @@ const Designer = () => {
 };
 
 export default Designer;
-
-
-
-
-
-
-
-
-
