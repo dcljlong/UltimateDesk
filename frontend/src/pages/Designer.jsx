@@ -409,7 +409,7 @@ const Designer = () => {
               <NestingViewer nestingData={cncOutput?.nesting} cncOutput={cncOutput} />
             </TabsContent>
             
-            <TabsContent value="buildviews" className="flex-1 m-0 overflow-auto">
+            <TabsContent value="buildviews" className="flex-1 min-h-0 m-0 overflow-y-auto">
               <BuildViews2D params={params} />
             </TabsContent>
 

@@ -44,7 +44,7 @@ const BuildViews2D = ({ params }) => {
   const subClass = "text-xs text-[var(--text-secondary)] mb-3";
 
   return (
-    <div className="h-full overflow-auto p-4">
+    <div className="min-h-full p-4 pb-16">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-bold">2D Build Views</h2>
