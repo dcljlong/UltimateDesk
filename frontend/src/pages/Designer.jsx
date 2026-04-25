@@ -11,6 +11,7 @@ import {
   Sliders,
   TreeStructure,
   Ruler,
+  Robot,
   Code,
   SignOut,
   Crown,
@@ -384,8 +385,8 @@ const Designer = () => {
                   <Code size={16} /> Toolpath
                 </TabsTrigger>
                 <TabsTrigger value="ai" className="gap-1" data-testid="tab-ai">
-    ðŸ¤– AI Designer
-  </TabsTrigger>
+                  <Robot size={16} /> AI Designer
+                </TabsTrigger>
 </TabsList>
               
               <div
