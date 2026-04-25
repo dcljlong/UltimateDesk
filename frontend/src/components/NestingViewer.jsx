@@ -1,4 +1,4 @@
-﻿import React, { useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { Package, TreeStructure, Clock, CurrencyDollar } from '@phosphor-icons/react';
 
@@ -46,7 +46,7 @@ const NestingViewer = ({ nestingData, cncOutput, className = '' }) => {
   }
 
   return (
-    <div className={`space-y-6 ${className}`}>
+    <div className={`h-[calc(100vh-160px)] overflow-y-auto space-y-6 pr-2 pb-24 ${className}`}>
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <div className="neu-surface p-4 rounded-xl">
           <div className="flex items-center gap-2 text-[var(--text-secondary)] mb-1">

@@ -405,12 +405,12 @@ const Designer = () => {
               <DeskPreview3D params={params} />
             </TabsContent>
             
-            <TabsContent value="nesting" className="flex-1 min-h-0 m-0 overflow-y-auto p-4">
+            <TabsContent value="nesting" className="flex-1 min-h-0 m-0 overflow-hidden p-4">
               <NestingViewer nestingData={cncOutput?.nesting} cncOutput={cncOutput} />
             </TabsContent>
             
             <TabsContent value="buildviews" className="flex-1 min-h-0 m-0 overflow-hidden">
-              <BuildViews2D params={params} />
+              <BuildViews2D key={JSON.stringify(params)} params={params} />
             </TabsContent>
 
             <TabsContent value="gcode" className="flex-1 min-h-0 m-0 overflow-y-auto p-4">
