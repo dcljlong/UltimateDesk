@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { 
@@ -376,6 +376,9 @@ const Designer = () => {
                 </TabsTrigger>
                 <TabsTrigger value="nesting" className="gap-1" data-testid="tab-nesting">
                   <TreeStructure size={16} /> Nesting
+                </TabsTrigger>
+                <TabsTrigger value="buildviews" className="gap-1" data-testid="tab-buildviews">
+                  <Ruler size={16} /> Build Views
                 </TabsTrigger>
                 <TabsTrigger value="gcode" className="gap-1" data-testid="tab-gcode">
                   <Code size={16} /> Toolpath
