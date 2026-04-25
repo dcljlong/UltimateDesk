@@ -10,6 +10,7 @@ import {
   List,
   Sliders,
   TreeStructure,
+  Ruler,
   Code,
   SignOut,
   Crown,
@@ -28,6 +29,7 @@ import ConfigPanel from '../components/ConfigPanel';
 import NestingViewer from '../components/NestingViewer';
 import ExportDialog from '../components/ExportDialog';
 import ChatDesigner from '../components/ChatDesigner';
+import BuildViews2D from '../components/BuildViews2D';
 import axios from 'axios';
 
 const getApiUrl = () => {
