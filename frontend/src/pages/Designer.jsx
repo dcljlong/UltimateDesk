@@ -405,7 +405,7 @@ const Designer = () => {
               <DeskPreview3D params={params} />
             </TabsContent>
             
-            <TabsContent value="nesting" className="flex-1 m-0 p-4 overflow-auto">
+            <TabsContent value="nesting" className="flex-1 min-h-0 m-0 overflow-y-auto p-4">
               <NestingViewer nestingData={cncOutput?.nesting} cncOutput={cncOutput} />
             </TabsContent>
             
@@ -413,7 +413,7 @@ const Designer = () => {
               <BuildViews2D params={params} />
             </TabsContent>
 
-            <TabsContent value="gcode" className="flex-1 m-0 p-4 overflow-auto">
+            <TabsContent value="gcode" className="flex-1 min-h-0 m-0 overflow-y-auto p-4">
               {cncOutput?.gcode_preview ? (
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
@@ -442,7 +442,7 @@ const Designer = () => {
                 </div>
               )}
             </TabsContent>
-                      <TabsContent value="ai" className="flex-1 m-0 p-4 overflow-auto">
+                      <TabsContent value="ai" forceMount className="flex-1 min-h-0 m-0 overflow-hidden p-4 data-[state=inactive]:hidden">
               <ChatDesigner
                 params={params}
                 onParamsUpdate={handleParamsUpdate}
