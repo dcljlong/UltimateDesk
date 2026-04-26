@@ -1404,6 +1404,18 @@ def generate_full_gcode(parts: List[Dict], config: CNCConfig, design_name: str) 
             f"Shifted toolpath envelope X{fmt(shifted_max_x)} Y{fmt(shifted_max_y)} exceeds sheet size {fmt(sheet_width)} x {fmt(sheet_height)}mm."
         )
 
+    operation_audit = {
+        "parts": len(parts),
+        "drills": 0,
+        "pockets": 0,
+        "inside_profiles": 0,
+        "outside_profiles": 0,
+        "profile_passes": 0,
+        "pocket_passes": 0,
+        "tabs": 0,
+        "warnings": len(machine_warnings),
+    }
+
     lines = [
         "; ========================================",
         "; UltimateDesk - Production G-Code",
@@ -1446,6 +1458,7 @@ def generate_full_gcode(parts: List[Dict], config: CNCConfig, design_name: str) 
         "; Inside profiles: offset inward by tool radius.",
         "; Direction Strategy: for CW spindle, outside=CW and inside=CCW represents climb routing.",
         "; Toolpath Direction: outside profiles clockwise, inside profiles counter-clockwise.",
+        "; Audit Summary: emitted at program end after operations are generated.",
         "; ========================================",
         "",
         "G21 ; Set units to millimeters",
@@ -1479,6 +1492,7 @@ def generate_full_gcode(parts: List[Dict], config: CNCConfig, design_name: str) 
         lines.append("")
 
     def add_drill_cycle(point):
+        operation_audit["drills"] += 1
         drill_depth = min(float(point.get("depth", material_thickness) or material_thickness), material_thickness)
 
         lines.append(f"; DRILL: {point['name']} diameter {fmt(point['diameter'])}mm")
@@ -1516,6 +1530,7 @@ def generate_full_gcode(parts: List[Dict], config: CNCConfig, design_name: str) 
             post_y = mid_y + uy * (tab_length / 2)
 
             lines.append(f"G1 X{fmt(pre_x)} Y{fmt(pre_y)} F{feed_rate}")
+            operation_audit["tabs"] += 1
             lines.append(f"G1 Z-{fmt(tab_z_depth)} F{plunge_rate} ; holding tab lift leaves {fmt(tab_skin)}mm skin")
             lines.append(f"G1 X{fmt(post_x)} Y{fmt(post_y)} F{feed_rate} ; cross holding tab")
             lines.append(f"G1 Z-{fmt(depth)} F{plunge_rate} ; resume profile depth")
@@ -1530,6 +1545,7 @@ def generate_full_gcode(parts: List[Dict], config: CNCConfig, design_name: str) 
     add_linear_move_with_optional_tab.current_y = 0
 
     def add_rect_pocket(pocket_name, left, bottom, right, top, pocket_depth):
+        operation_audit["pockets"] += 1
         cut_left = left + tool_radius
         cut_bottom = bottom + tool_radius
         cut_right = right - tool_radius
@@ -1540,6 +1556,7 @@ def generate_full_gcode(parts: List[Dict], config: CNCConfig, design_name: str) 
             return
 
         pocket_passes = max(1, math.ceil(pocket_depth / cut_depth_per_pass))
+        operation_audit["pocket_passes"] += pocket_passes
         start_x = (cut_left + cut_right) / 2
         start_y = (cut_bottom + cut_top) / 2
 
@@ -1597,6 +1614,12 @@ def generate_full_gcode(parts: List[Dict], config: CNCConfig, design_name: str) 
         lines.append("")
 
     def add_rect_profile(profile_name, left, bottom, right, top, cut_class):
+        if cut_class == "OUTSIDE_PROFILE":
+            operation_audit["outside_profiles"] += 1
+        else:
+            operation_audit["inside_profiles"] += 1
+        operation_audit["profile_passes"] += passes
+
         if right <= left or top <= bottom:
             lines.append(f"; WARNING: skipped invalid profile {profile_name}")
             return
@@ -1726,7 +1749,25 @@ def generate_full_gcode(parts: List[Dict], config: CNCConfig, design_name: str) 
             "OUTSIDE_PROFILE",
         )
 
+    operation_audit["warnings"] = len(machine_warnings)
+
     lines.extend([
+        "",
+        "; ========================================",
+        "; OPERATION AUDIT SUMMARY",
+        "; ========================================",
+        f"; Parts: {operation_audit['parts']}",
+        f"; Drill Operations: {operation_audit['drills']}",
+        f"; Pocket Operations: {operation_audit['pockets']}",
+        f"; Pocket Depth Passes: {operation_audit['pocket_passes']}",
+        f"; Inside Profile Operations: {operation_audit['inside_profiles']}",
+        f"; Outside Profile Operations: {operation_audit['outside_profiles']}",
+        f"; Profile Depth Passes: {operation_audit['profile_passes']}",
+        f"; Holding Tabs: {operation_audit['tabs']}",
+        f"; Machine/Tool Warnings: {operation_audit['warnings']}",
+        "; Verify every operation in CAM/controller preview before cutting.",
+        "; ========================================",
+        "",
         "; ========================================",
         "; Program End",
         "; ========================================",
