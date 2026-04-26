@@ -30,7 +30,7 @@ const JoineryView = ({ params }) => {
           })}
 
           <text x="300" y="220" textAnchor="middle" fontSize="12">
-            screw fixings (typ.)
+            5 x screws | 5mm pilot | 30mm edge offset | even spacing
           </text>
 
           {/* Desktop */}
@@ -45,7 +45,7 @@ const JoineryView = ({ params }) => {
           })}
 
           <text x="300" y="90" textAnchor="middle" fontSize="12">
-            top fix from underside
+            top fix from underside | 4 x screws | 40mm edge offset
           </text>
 
           {/* Centre support */}
