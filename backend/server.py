@@ -1230,15 +1230,44 @@ def validate_design(params, parts):
 
 
 
+
+
+def get_joinery_rules(connection_type, params, part_width):
+    thickness = params.material_thickness
+
+    if connection_type == "rail_to_leg":
+        return {
+            "diameter": 5,
+            "edge": max(30, thickness * 1.5),
+            "count": 5 if part_width < 2000 else 7
+        }
+
+    if connection_type == "top_to_rail":
+        return {
+            "diameter": 4,
+            "edge": max(40, thickness * 2),
+            "count": 4 if part_width < 2000 else 6
+        }
+
+    return {
+        "diameter": 5,
+        "edge": 30,
+        "count": 4
+    }
+
 def generate_connection_holes(connections, params):
     holes = []
 
     for conn in connections:
         width = conn.part_a.get("width", 1000)
 
-        count = 5 if width < 2000 else 7
-        edge = 30
-        span = width - 120
+        rules = get_joinery_rules(conn.connection_type, params, width)
+
+        count = rules["count"]
+        edge = rules["edge"]
+        diameter = rules["diameter"]
+
+        span = width - edge * 2
         spacing = span / max(1, count - 1)
 
         for i in range(count):
@@ -1248,7 +1277,7 @@ def generate_connection_holes(connections, params):
                 "connected_to": conn.part_b.get("name"),
                 "x": round(x, 2),
                 "y": 20,
-                "diameter": 5,
+                "diameter": diameter,
                 "type": conn.connection_type
             })
 
