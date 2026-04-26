@@ -141,11 +141,35 @@ class ChatResponse(BaseModel):
     warnings: List[str] = []
 
 class CNCConfig(BaseModel):
-    bit_size: int = 6
-    cut_depth_per_pass: int = 6
-    sheet_width: int = 2400
-    sheet_height: int = 1200
-    material_thickness: int = 18
+    bit_size: float = 6
+    cut_depth_per_pass: float = 3
+    sheet_width: float = 2400
+    sheet_height: float = 1200
+    material_thickness: float = 18
+
+    # Production CNC controls
+    material: str = "18mm NZ Plywood"
+    material_name: str = "18mm NZ Plywood"
+    feed_rate: int = 1500
+    plunge_rate: int = 300
+    spindle_speed: int = 18000
+    machine_post: str = "generic_grbl_metric"
+    post_processor: str = "generic_grbl_metric"
+    tool_number: int = 1
+    tool_name: str = ""
+    spindle_rotation: str = "CW"
+    cut_strategy: str = "climb"
+
+    # Safe motion / machining strategy
+    safe_height: float = 10
+    retract_height: float = 3
+    stock_margin: float = 0
+    lead_in_length: float = 0
+    lead_out_length: float = 0
+    tab_length: float = 0
+    tab_skin: float = 0
+    pocket_stepover: float = 0
+    pocket_finish_allowance: float = 0
 
 class NestingResult(BaseModel):
     sheets_required: int
@@ -1113,6 +1137,7 @@ class ExportRequest(BaseModel):
     params: DesignParams
     design_name: str = "UltimateDesk Design"
     bundle: str = "dxf"  # dxf | dxf_svg | dxf_gcode | full_pack
+    cnc_config: dict = {}
 
 class ExportResponse(BaseModel):
     success: bool
@@ -1150,17 +1175,17 @@ def generate_full_gcode(parts: List[Dict], config: CNCConfig, design_name: str) 
 
     safe_height = float(getattr(config, "safe_height", 10) or 10)
     clearance_height = max(safe_height, 25)
-    retract_height = 3
-    lead_in_length = max(bit_size * 1.5, 8)
-    lead_out_length = lead_in_length
+    retract_height = float(getattr(config, "retract_height", 3) or 3)
+    lead_in_length = float(getattr(config, "lead_in_length", 0) or max(bit_size * 1.5, 8))
+    lead_out_length = float(getattr(config, "lead_out_length", 0) or lead_in_length)
     sheet_width = float(getattr(config, "sheet_width", 2400) or 2400)
     sheet_height = float(getattr(config, "sheet_height", 1200) or 1200)
     stock_margin = float(getattr(config, "stock_margin", 0) or max(lead_in_length + tool_radius, bit_size * 2))
-    tab_length = max(bit_size * 3, 18)
-    tab_skin = min(3, max(material_thickness * 0.2, 1.5))
+    tab_length = float(getattr(config, "tab_length", 0) or max(bit_size * 3, 18))
+    tab_skin = float(getattr(config, "tab_skin", 0) or min(3, max(material_thickness * 0.2, 1.5)))
     tab_z_depth = max(material_thickness - tab_skin, 0)
-    pocket_stepover = max(bit_size * 0.45, 1)
-    pocket_finish_allowance = max(tool_radius * 0.15, 0.3)
+    pocket_stepover = float(getattr(config, "pocket_stepover", 0) or max(bit_size * 0.45, 1))
+    pocket_finish_allowance = float(getattr(config, "pocket_finish_allowance", 0) or max(tool_radius * 0.15, 0.3))
 
     passes = max(1, math.ceil(material_thickness / cut_depth_per_pass))
 
@@ -2561,7 +2586,14 @@ async def generate_export_files(export_req: ExportRequest, request: Request):
         consumed_credit_id = credit["_id"]
 
     # Generate files
-    config = CNCConfig()
+    raw_cnc_config = getattr(export_req, "cnc_config", None) or {}
+    if isinstance(raw_cnc_config, CNCConfig):
+        config = raw_cnc_config
+    elif isinstance(raw_cnc_config, dict):
+        config = CNCConfig(**raw_cnc_config)
+    else:
+        config = CNCConfig()
+
     parts = calculate_desk_parts(export_req.params)
     nesting = simple_nesting(parts, config.sheet_width, config.sheet_height)
 
@@ -2580,6 +2612,7 @@ async def generate_export_files(export_req: ExportRequest, request: Request):
         "design_name": export_req.design_name,
         "bundle": requested_bundle,
         "params": export_req.params.model_dump(),
+        "cnc_config": config.model_dump(),
         "gcode": gcode_content,
         "dxf": dxf_content,
         "svg": svg_content,
@@ -2651,7 +2684,7 @@ async def download_export_file(export_id: str, file_type: str, request: Request)
         media_type = "image/svg+xml"
     elif file_type == "pdf":
         params = DesignParams(**export.get("params", {}))
-        config = CNCConfig()
+        config = CNCConfig(**(export.get("cnc_config") or {}))
         parts = calculate_desk_parts(params)
         nesting = simple_nesting(parts, config.sheet_width, config.sheet_height)
         content = generate_pdf_bytes(nesting.parts, nesting, params, export.get("design_name", "UltimateDesk"))
