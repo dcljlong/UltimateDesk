@@ -1142,6 +1142,8 @@ def generate_full_gcode(parts: List[Dict], config: CNCConfig, design_name: str) 
         f"; Feed Rate: {1500 if config.bit_size <= 6 else 1200} mm/min",
         f"; Plunge Rate: 300 mm/min",
         f"; Safe Height: 10mm",
+        f"; Tool Compensation: verify outside profile offset = {config.bit_size / 2}mm in CAM",
+        f"; Kerf Allowance: tool diameter {config.bit_size}mm, radius {config.bit_size / 2}mm",
         f";",
         f"; Total Parts: {len(parts)}",
         f"; ========================================",
@@ -1159,6 +1161,7 @@ def generate_full_gcode(parts: List[Dict], config: CNCConfig, design_name: str) 
     feed_rate = 1500 if config.bit_size <= 6 else 1200
     plunge_rate = 300
     safe_height = 10
+    profile_offset = config.bit_size / 2
 
     for i, part in enumerate(parts):
         x, y = part.get('x', 0), part.get('y', 0)
@@ -1167,6 +1170,7 @@ def generate_full_gcode(parts: List[Dict], config: CNCConfig, design_name: str) 
         lines.append(f"; ----------------------------------------")
         lines.append(f"; Part {i+1}: {part['name']}")
         lines.append(f"; Dimensions: {w}mm x {h}mm")
+        lines.append(f"; Required outside profile offset: {profile_offset}mm")
         lines.append(f"; Position: X{x} Y{y}")
         if part.get('rotated'):
             lines.append(f"; Note: Part is ROTATED 90 degrees")
