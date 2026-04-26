@@ -1153,6 +1153,9 @@ def generate_full_gcode(parts: List[Dict], config: CNCConfig, design_name: str) 
     retract_height = 3
     lead_in_length = max(bit_size * 1.5, 8)
     lead_out_length = lead_in_length
+    sheet_width = float(getattr(config, "sheet_width", 2400) or 2400)
+    sheet_height = float(getattr(config, "sheet_height", 1200) or 1200)
+    stock_margin = float(getattr(config, "stock_margin", 0) or max(lead_in_length + tool_radius, bit_size * 2))
     tab_length = max(bit_size * 3, 18)
     tab_skin = min(3, max(material_thickness * 0.2, 1.5))
     tab_z_depth = max(material_thickness - tab_skin, 0)
@@ -1271,6 +1274,10 @@ def generate_full_gcode(parts: List[Dict], config: CNCConfig, design_name: str) 
                 if not is_absolute_feature(item):
                     hx += part_x
                     hy += part_y
+
+                hx += origin_shift_x
+                hy += origin_shift_y
+
                 diameter = local_number(item, "diameter", "dia", "d", default=bit_size)
                 drill_points.append({
                     "name": item.get("name") or item.get("label") or key,
@@ -1305,6 +1312,9 @@ def generate_full_gcode(parts: List[Dict], config: CNCConfig, design_name: str) 
                 if not is_absolute_feature(item):
                     ix += part_x
                     iy += part_y
+
+                ix += origin_shift_x
+                iy += origin_shift_y
 
                 profiles.append({
                     "name": item.get("name") or item.get("label") or key,
@@ -1342,6 +1352,9 @@ def generate_full_gcode(parts: List[Dict], config: CNCConfig, design_name: str) 
                     px += part_x
                     py += part_y
 
+                px += origin_shift_x
+                py += origin_shift_y
+
                 pockets.append({
                     "name": item.get("name") or item.get("label") or key,
                     "left": px,
@@ -1351,6 +1364,45 @@ def generate_full_gcode(parts: List[Dict], config: CNCConfig, design_name: str) 
                     "depth": min(depth, material_thickness),
                 })
         return pockets
+
+    def calculate_origin_shift():
+        min_toolpath_x = 0
+        min_toolpath_y = 0
+        max_toolpath_x = 0
+        max_toolpath_y = 0
+
+        for part in parts:
+            px = float(part.get("x", 0) or 0)
+            py = float(part.get("y", 0) or 0)
+            pw = float(part.get("width", 0) or 0)
+            ph = float(part.get("height", 0) or 0)
+
+            # Outside profile is offset outward by tool radius.
+            # Lead-in/out extends further left of profile start.
+            min_toolpath_x = min(min_toolpath_x, px - tool_radius - lead_in_length)
+            min_toolpath_y = min(min_toolpath_y, py - tool_radius)
+            max_toolpath_x = max(max_toolpath_x, px + pw + tool_radius)
+            max_toolpath_y = max(max_toolpath_y, py + ph + tool_radius)
+
+        shift_x = max(0, stock_margin - min_toolpath_x)
+        shift_y = max(0, stock_margin - min_toolpath_y)
+
+        shifted_max_x = max_toolpath_x + shift_x
+        shifted_max_y = max_toolpath_y + shift_y
+
+        return shift_x, shift_y, shifted_max_x, shifted_max_y
+
+    origin_shift_x, origin_shift_y, shifted_max_x, shifted_max_y = calculate_origin_shift()
+
+    if origin_shift_x > 0 or origin_shift_y > 0:
+        machine_warnings.append(
+            f"Toolpaths shifted by X{fmt(origin_shift_x)} Y{fmt(origin_shift_y)} to preserve stock margin and avoid negative machine coordinates."
+        )
+
+    if shifted_max_x > sheet_width or shifted_max_y > sheet_height:
+        machine_warnings.append(
+            f"Shifted toolpath envelope X{fmt(shifted_max_x)} Y{fmt(shifted_max_y)} exceeds sheet size {fmt(sheet_width)} x {fmt(sheet_height)}mm."
+        )
 
     lines = [
         "; ========================================",
@@ -1364,6 +1416,10 @@ def generate_full_gcode(parts: List[Dict], config: CNCConfig, design_name: str) 
         "; Confirm work origin, stock margin, clamps, vacuum hold-down, tool length, and post compatibility.",
         ";",
         f"; Machine Post: {machine_post}",
+        f"; Sheet Size: {fmt(sheet_width)}mm x {fmt(sheet_height)}mm",
+        f"; Stock Margin: {fmt(stock_margin)}mm",
+        f"; Origin Shift Applied: X{fmt(origin_shift_x)} Y{fmt(origin_shift_y)}",
+        f"; Toolpath Envelope After Shift: X{fmt(shifted_max_x)} Y{fmt(shifted_max_y)}",
         f"; Material: {material_name}",
         f"; Material Thickness: {fmt(material_thickness)}mm",
         f"; Tool Number: T{tool_number}",
@@ -1620,8 +1676,10 @@ def generate_full_gcode(parts: List[Dict], config: CNCConfig, design_name: str) 
         lines.append("")
 
     for i, part in enumerate(parts):
-        part_x = float(part.get("x", 0) or 0)
-        part_y = float(part.get("y", 0) or 0)
+        raw_part_x = float(part.get("x", 0) or 0)
+        raw_part_y = float(part.get("y", 0) or 0)
+        part_x = raw_part_x + origin_shift_x
+        part_y = raw_part_y + origin_shift_y
         width = float(part["width"])
         height = float(part["height"])
         part_name = part.get("name") or f"Part {i + 1}"
@@ -1629,7 +1687,8 @@ def generate_full_gcode(parts: List[Dict], config: CNCConfig, design_name: str) 
         lines.append("; ========================================")
         lines.append(f"; PART {i + 1}: {part_name}")
         lines.append(f"; Raw Size: {fmt(width)}mm x {fmt(height)}mm")
-        lines.append(f"; Raw Position: X{fmt(part_x)} Y{fmt(part_y)}")
+        lines.append(f"; Raw Position: X{fmt(raw_part_x)} Y{fmt(raw_part_y)}")
+        lines.append(f"; Machine Position After Origin Shift: X{fmt(part_x)} Y{fmt(part_y)}")
         if part.get("rotated"):
             lines.append("; Note: Part is ROTATED 90 degrees in nesting")
         lines.append("; Operation order: drilling -> pocketing -> inside profiles -> outside profile")
