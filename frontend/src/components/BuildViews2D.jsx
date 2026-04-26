@@ -64,7 +64,7 @@ const BuildViews2D = ({ params }) => {
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
         <div className={panelClass}>
           <div className={titleClass}>Top plan view</div>
-          <div className={subClass}>Shows desktop split line, depth, and support position.</div>
+          <div className={subClass}>Shows split line, user/sitting side, rear cable side, centre support, and knee clearance zone.</div>
 
           <svg viewBox="0 0 780 380" className="w-full rounded-xl bg-white text-slate-900">
             <rect x={topX} y={topY} width={topW} height={topD} fill="#d7b07a" stroke="#111827" strokeWidth="2" />
@@ -81,21 +81,40 @@ const BuildViews2D = ({ params }) => {
                 />
                 <rect
                   x={topX + topW / 2 - 18}
-                  y={topY + topD / 2 - 44}
+                  y={topY + topD * 0.24 - 44}
                   width="36"
                   height="88"
                   fill="rgba(17,24,39,0.16)"
                   stroke="#111827"
                   strokeWidth="1"
                 />
-                <text x={topX + topW / 2 + 26} y={topY + topD / 2} style={labelStyle}>
-                  centre support
+                <rect
+                  x={topX + 24}
+                  y={topY + topD * 0.58}
+                  width={topW - 48}
+                  height={topD * 0.30}
+                  fill="rgba(34,197,94,0.10)"
+                  stroke="rgba(34,197,94,0.55)"
+                  strokeDasharray="8 6"
+                  strokeWidth="2"
+                />
+                <text x={topX + topW / 2} y={topY + topD * 0.75} textAnchor="middle" style={labelStyle}>
+                  knee clearance / sitting zone
+                </text>
+                <text x={topX + topW / 2 + 26} y={topY + topD * 0.24} style={labelStyle}>
+                  centre support set back
                 </text>
               </>
             )}
 
             <text x={390} y={30} textAnchor="middle" style={labelStyle}>
               TOP PLAN
+            </text>
+            <text x={390} y={topY - 14} textAnchor="middle" style={labelStyle}>
+              REAR / CABLE TRAY SIDE
+            </text>
+            <text x={390} y={topY + topD + 58} textAnchor="middle" style={labelStyle}>
+              USER SIDE / SITTING SIDE
             </text>
             <text x={390} y={topY + topD + 34} textAnchor="middle" style={dimStyle}>
               Overall width: {width}mm
@@ -141,13 +160,13 @@ const BuildViews2D = ({ params }) => {
           </div>
 
           <div className="mt-4 rounded-xl border border-[var(--border)] p-3 text-xs text-[var(--text-secondary)]">
-            These are reference build views. Final dimensions, joinery, tooling, feeds, hold-down, and CAM setup must still be checked before cutting.
+            User side is the open sitting edge. Rear side is the cable tray/service side. Centre support is shown set back toward the rear to preserve knee clearance. Final dimensions, joinery, tooling, feeds, hold-down, and CAM setup must still be checked before cutting.
           </div>
         </div>
 
         <div className={panelClass}>
-          <div className={titleClass}>Front elevation</div>
-          <div className={subClass}>Shows width, legs, rails, modesty panel, and centre support.</div>
+          <div className={titleClass}>User-side elevation</div>
+          <div className={subClass}>Shows the open sitting side, knee zone, legs, rails, and centre support set back from the user.</div>
 
           <svg viewBox="0 0 780 420" className="w-full rounded-xl bg-white text-slate-900">
             <line x1="70" y1="360" x2="710" y2="360" stroke="#cbd5e1" strokeWidth="2" />
@@ -176,8 +195,9 @@ const BuildViews2D = ({ params }) => {
               />
             )}
 
-            <text x="390" y="34" textAnchor="middle" style={labelStyle}>FRONT ELEVATION</text>
+            <text x="390" y="34" textAnchor="middle" style={labelStyle}>USER-SIDE ELEVATION</text>
             <text x="390" y="390" textAnchor="middle" style={dimStyle}>Width: {width}mm</text>
+            <text x="390" y="374" textAnchor="middle" style={labelStyle}>OPEN USER / SITTING SIDE</text>
             <text x={frontX + frontW + 24} y={frontY - frontH / 2} style={dimStyle} transform={`rotate(90 ${frontX + frontW + 24} ${frontY - frontH / 2})`}>
               Height: {height}mm
             </text>
