@@ -1133,6 +1133,21 @@ def generate_full_gcode(parts: List[Dict], config: CNCConfig, design_name: str) 
     plunge_rate = int(getattr(config, "plunge_rate", 0) or 300)
     spindle_speed = int(getattr(config, "spindle_speed", 0) or 18000)
 
+    material_name = str(
+        getattr(config, "material", None)
+        or getattr(config, "material_name", None)
+        or "18mm NZ Plywood"
+    )
+    machine_post = str(
+        getattr(config, "machine_post", None)
+        or getattr(config, "post_processor", None)
+        or "generic_grbl_metric"
+    )
+    tool_number = int(getattr(config, "tool_number", 0) or 1)
+    tool_name = str(getattr(config, "tool_name", None) or f"{bit_size:g}mm flat end mill")
+    spindle_rotation = str(getattr(config, "spindle_rotation", None) or "CW").upper()
+    cut_strategy = str(getattr(config, "cut_strategy", None) or "climb").lower()
+
     safe_height = float(getattr(config, "safe_height", 10) or 10)
     clearance_height = max(safe_height, 25)
     retract_height = 3
@@ -1147,6 +1162,78 @@ def generate_full_gcode(parts: List[Dict], config: CNCConfig, design_name: str) 
     def fmt(value):
         value = round(float(value), 3)
         return f"{value:.3f}".rstrip("0").rstrip(".")
+
+    def resolve_tool_recommendation():
+        material_key = material_name.lower()
+        if "ply" in material_key or "plywood" in material_key:
+            if bit_size <= 3:
+                return {
+                    "feed": 900,
+                    "plunge": 180,
+                    "rpm": 18000,
+                    "max_pass": 2,
+                    "notes": "Small-tool plywood profile: conservative pass depth recommended.",
+                }
+            if bit_size <= 6:
+                return {
+                    "feed": 1500,
+                    "plunge": 300,
+                    "rpm": 18000,
+                    "max_pass": 3,
+                    "notes": "Standard plywood profile strategy.",
+                }
+            return {
+                "feed": 1200,
+                "plunge": 250,
+                "rpm": 16000,
+                "max_pass": 4,
+                "notes": "Large-tool plywood profile: verify chip load and machine rigidity.",
+            }
+
+        if "mdf" in material_key:
+            return {
+                "feed": 1600 if bit_size <= 6 else 1300,
+                "plunge": 300,
+                "rpm": 18000,
+                "max_pass": 3,
+                "notes": "MDF profile strategy: manage dust extraction and heat.",
+            }
+
+        return {
+            "feed": 1200 if bit_size <= 6 else 1000,
+            "plunge": 250,
+            "rpm": 16000,
+            "max_pass": min(3, max(1, bit_size * 0.5)),
+            "notes": "Generic material strategy: verify with CAM/tool supplier.",
+        }
+
+    tool_recommendation = resolve_tool_recommendation()
+    machine_warnings = []
+
+    if feed_rate > tool_recommendation["feed"] * 1.35:
+        machine_warnings.append(
+            f"Feed rate {feed_rate} mm/min is above recommended baseline {tool_recommendation['feed']} mm/min for {material_name}."
+        )
+
+    if plunge_rate > tool_recommendation["plunge"] * 1.35:
+        machine_warnings.append(
+            f"Plunge rate {plunge_rate} mm/min is above recommended baseline {tool_recommendation['plunge']} mm/min for {material_name}."
+        )
+
+    if cut_depth_per_pass > tool_recommendation["max_pass"]:
+        machine_warnings.append(
+            f"Cut depth per pass {fmt(cut_depth_per_pass)}mm exceeds recommended baseline {fmt(tool_recommendation['max_pass'])}mm for {tool_name} in {material_name}."
+        )
+
+    if spindle_rotation != "CW":
+        machine_warnings.append(
+            f"Spindle rotation is set to {spindle_rotation}; verify profile directions before cutting."
+        )
+
+    if cut_strategy not in ("climb", "conventional"):
+        machine_warnings.append(
+            f"Unknown cut strategy '{cut_strategy}'. Default geometry assumes climb strategy."
+        )
 
     def local_number(source, *names, default=0):
         for name in names:
@@ -1231,20 +1318,29 @@ def generate_full_gcode(parts: List[Dict], config: CNCConfig, design_name: str) 
         "; This G-code must be verified in machine-specific CAM/control software before cutting.",
         "; Confirm work origin, stock margin, clamps, vacuum hold-down, tool length, and post compatibility.",
         ";",
+        f"; Machine Post: {machine_post}",
+        f"; Material: {material_name}",
         f"; Material Thickness: {fmt(material_thickness)}mm",
-        f"; Bit Size: {fmt(bit_size)}mm end mill",
+        f"; Tool Number: T{tool_number}",
+        f"; Tool: {tool_name}",
+        f"; Bit Size: {fmt(bit_size)}mm",
         f"; Tool Radius / Kerf Offset: {fmt(tool_radius)}mm",
         f"; Cut Depth Per Pass: {fmt(cut_depth_per_pass)}mm",
         f"; Calculated Passes: {passes}",
         f"; Feed Rate: {feed_rate} mm/min",
         f"; Plunge Rate: {plunge_rate} mm/min",
         f"; Spindle Speed: {spindle_speed} RPM",
+        f"; Spindle Rotation: {spindle_rotation}",
         f"; Safe Height: {fmt(safe_height)}mm",
         f"; Lead-in / Lead-out: {fmt(lead_in_length)}mm",
+        f"; Tool Recommendation: feed {tool_recommendation['feed']} mm/min, plunge {tool_recommendation['plunge']} mm/min, rpm {tool_recommendation['rpm']}, max pass {fmt(tool_recommendation['max_pass'])}mm",
+        f"; Tool Note: {tool_recommendation['notes']}",
+        f"; Cut Strategy: {cut_strategy.upper()}",
         "; Cut Classification: drill operations first, inside profiles before outside profiles.",
         "; Offset Strategy: generated XY geometry is tool-centreline offset; G41/G42 not used.",
         "; Outside profiles: offset outward by tool radius.",
         "; Inside profiles: offset inward by tool radius.",
+        "; Direction Strategy: for CW spindle, outside=CW and inside=CCW represents climb routing.",
         "; Toolpath Direction: outside profiles clockwise, inside profiles counter-clockwise.",
         "; ========================================",
         "",
@@ -1260,6 +1356,22 @@ def generate_full_gcode(parts: List[Dict], config: CNCConfig, design_name: str) 
         f"G0 Z{fmt(clearance_height)} ; Initial safe retract",
         "",
     ]
+
+    if machine_warnings:
+        lines.append("; MACHINE / TOOLING WARNINGS:")
+        for warning in machine_warnings:
+            lines.append(f"; WARNING: {warning}")
+        lines.append("")
+
+    if machine_post == "generic_grbl_metric":
+        lines.append("; POST NOTE: Generic GRBL-style metric output. Confirm controller dialect before machine run.")
+        lines.append("")
+    elif machine_post.lower() in ("mach3", "mach4"):
+        lines.append("; POST NOTE: Mach-style controller selected. Verify arc, drilling cycle, and safe-Z behaviour.")
+        lines.append("")
+    else:
+        lines.append(f"; POST NOTE: Custom/unknown post '{machine_post}'. Verify all modal commands before cutting.")
+        lines.append("")
 
     def add_drill_cycle(point):
         lines.append(f"; DRILL: {point['name']} diameter {fmt(point['diameter'])}mm")
