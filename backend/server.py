@@ -1202,7 +1202,28 @@ def generate_full_gcode(parts: List[Dict], config: CNCConfig, design_name: str) 
         "; Questions? support@ultimatedesk.co.nz"
     ])
 
-    return "\n".join(lines)
+    gcode = "\\n".join(lines)
+
+    # ----------------------------
+    # CUT ORDER: drill moves before cut moves
+    # ----------------------------
+    gcode_lines = gcode.split("\\n")
+    drill_lines = [line for line in gcode_lines if "G81" in line]
+    cut_lines = [line for line in gcode_lines if line.startswith("G1 ")]
+    other_lines = [line for line in gcode_lines if line not in drill_lines and line not in cut_lines]
+    ordered_lines = other_lines + drill_lines + cut_lines
+
+    # ----------------------------
+    # BASIC TAB STRATEGY: add small Z lift on profile moves
+    # ----------------------------
+    tabbed_lines = []
+    for line in ordered_lines:
+        tabbed_lines.append(line)
+        if line.startswith("G1 X"):
+            tabbed_lines.append("G1 Z-10 ; holding tab lift")
+            tabbed_lines.append("G1 Z-18 ; resume full depth")
+
+    return "\\n".join(tabbed_lines)
 
 
 
