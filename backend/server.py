@@ -870,6 +870,41 @@ def calculate_desk_parts(params: DesignParams) -> List[Dict[str, Any]]:
 
 
 
+
+
+class PartConnection:
+    def __init__(self, part_a, part_b, connection_type, axis, offset=0):
+        self.part_a = part_a
+        self.part_b = part_b
+        self.connection_type = connection_type  # rail_to_leg, top_to_rail, etc
+        self.axis = axis  # x, y
+        self.offset = offset
+
+
+def build_part_connections(parts):
+    connections = []
+
+    for p in parts:
+        name = p.get("name", "").lower()
+
+        # Rail to leg connections
+        if "rail" in name:
+            for leg in parts:
+                if "leg" in leg.get("name", "").lower():
+                    connections.append(
+                        PartConnection(p, leg, "rail_to_leg", axis="x")
+                    )
+
+        # Top to rail
+        if "top" in name:
+            for rail in parts:
+                if "rail" in rail.get("name", "").lower():
+                    connections.append(
+                        PartConnection(p, rail, "top_to_rail", axis="x")
+                    )
+
+    return connections
+
 def generate_joinery_holes(parts, params):
     width = params.width
     holes = []
@@ -1192,6 +1227,32 @@ def validate_design(params, parts):
             warnings.append(f"Part {p.get('name')} exceeds sheet size.")
 
     return warnings
+
+
+
+def generate_connection_holes(connections, params):
+    holes = []
+
+    for conn in connections:
+        width = conn.part_a.get("width", 1000)
+
+        count = 5 if width < 2000 else 7
+        edge = 30
+        span = width - 120
+        spacing = span / max(1, count - 1)
+
+        for i in range(count):
+            x = edge + i * spacing
+            holes.append({
+                "part": conn.part_a.get("name"),
+                "connected_to": conn.part_b.get("name"),
+                "x": round(x, 2),
+                "y": 20,
+                "diameter": 5,
+                "type": conn.connection_type
+            })
+
+    return holes
 
 def generate_dxf(parts: List[Dict], config: CNCConfig, design_name: str) -> str:
     """Generate DXF file for CAD/CAM import, separated by sheet."""
