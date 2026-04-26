@@ -1429,8 +1429,11 @@ def generate_full_gcode(parts: List[Dict], config: CNCConfig, design_name: str) 
             f"Shifted toolpath envelope X{fmt(shifted_max_x)} Y{fmt(shifted_max_y)} exceeds sheet size {fmt(sheet_width)} x {fmt(sheet_height)}mm."
         )
 
+    sheet_count = len({int(part.get("sheet", 0) or 0) for part in parts}) if parts else 0
+
     operation_audit = {
         "parts": len(parts),
+        "sheets": sheet_count,
         "drills": 0,
         "pockets": 0,
         "inside_profiles": 0,
@@ -1454,6 +1457,8 @@ def generate_full_gcode(parts: List[Dict], config: CNCConfig, design_name: str) 
         ";",
         f"; Machine Post: {machine_post}",
         f"; Sheet Size: {fmt(sheet_width)}mm x {fmt(sheet_height)}mm",
+        f"; Sheets In Job: {operation_audit['sheets']}",
+        "; Sheet Output Mode: one machine setup per sheet with M0 pause between sheets.",
         f"; Stock Margin: {fmt(stock_margin)}mm",
         f"; Origin Shift Applied: X{fmt(origin_shift_x)} Y{fmt(origin_shift_y)}",
         f"; Toolpath Envelope After Shift: X{fmt(shifted_max_x)} Y{fmt(shifted_max_y)}",
@@ -1723,17 +1728,57 @@ def generate_full_gcode(parts: List[Dict], config: CNCConfig, design_name: str) 
 
         lines.append("")
 
-    for i, part in enumerate(parts):
+    sorted_parts = sorted(
+        enumerate(parts),
+        key=lambda item: (int(item[1].get("sheet", 0) or 0), item[0])
+    )
+
+    current_sheet_idx = None
+
+    for i, (original_part_index, part) in enumerate(sorted_parts):
+        sheet_idx = int(part.get("sheet", 0) or 0)
+
+        if sheet_idx != current_sheet_idx:
+            if current_sheet_idx is not None:
+                lines.extend([
+                    "",
+                    "; ========================================",
+                    f"; SHEET CHANGE: completed Sheet {current_sheet_idx + 1}",
+                    "; ========================================",
+                    f"G0 Z{fmt(clearance_height)} ; retract before sheet change",
+                    "M5 ; spindle off before sheet change",
+                    f"M0 ; Load Sheet {sheet_idx + 1}, reset/confirm work origin, clamps, vacuum, and tool clearance",
+                    f"M3 S{spindle_speed} ; spindle on after sheet change",
+                    "G4 P3 ; dwell after spindle restart",
+                    f"G0 Z{fmt(clearance_height)} ; safe height after sheet change",
+                    "",
+                ])
+
+            current_sheet_idx = sheet_idx
+            lines.extend([
+                "",
+                "; ========================================",
+                f"; SHEET {sheet_idx + 1} SETUP",
+                "; ========================================",
+                f"; Load Sheet {sheet_idx + 1} at the same machine work origin.",
+                "; Verify clamps, hold-down, material thickness, and clear toolpath before cycle start.",
+                "; Parts below are for this sheet only.",
+                "; ========================================",
+                "",
+            ])
+
         raw_part_x = float(part.get("x", 0) or 0)
         raw_part_y = float(part.get("y", 0) or 0)
         part_x = raw_part_x + origin_shift_x
         part_y = raw_part_y + origin_shift_y
         width = float(part["width"])
         height = float(part["height"])
-        part_name = part.get("name") or f"Part {i + 1}"
+        part_name = part.get("name") or f"Part {original_part_index + 1}"
 
         lines.append("; ========================================")
         lines.append(f"; PART {i + 1}: {part_name}")
+        lines.append(f"; Source Part Index: {original_part_index + 1}")
+        lines.append(f"; Sheet: {sheet_idx + 1}")
         lines.append(f"; Raw Size: {fmt(width)}mm x {fmt(height)}mm")
         lines.append(f"; Raw Position: X{fmt(raw_part_x)} Y{fmt(raw_part_y)}")
         lines.append(f"; Machine Position After Origin Shift: X{fmt(part_x)} Y{fmt(part_y)}")
@@ -1781,6 +1826,7 @@ def generate_full_gcode(parts: List[Dict], config: CNCConfig, design_name: str) 
         "; ========================================",
         "; OPERATION AUDIT SUMMARY",
         "; ========================================",
+        f"; Sheets: {operation_audit['sheets']}",
         f"; Parts: {operation_audit['parts']}",
         f"; Drill Operations: {operation_audit['drills']}",
         f"; Pocket Operations: {operation_audit['pockets']}",
