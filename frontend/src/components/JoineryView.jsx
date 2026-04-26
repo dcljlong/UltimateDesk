@@ -7,12 +7,12 @@ const JoineryView = ({ params }) => {
 
   const railFixingCount = width >= 2400 ? 7 : width >= 1800 ? 5 : 4;
   const railEdgeOffset = 30;
-  const railSpan = 300;
+  const railSpan = width - 120; // 60mm clearance each side
   const railSpacing = Math.round((railSpan - railEdgeOffset * 2) / Math.max(1, railFixingCount - 1));
 
   const topFixingCount = width >= 2400 ? 6 : width >= 1800 ? 4 : 3;
   const topEdgeOffset = 40;
-  const topSpan = 400;
+  const topSpan = width - 160; // 80mm inset from edges
   const topSpacing = Math.round((topSpan - topEdgeOffset * 2) / Math.max(1, topFixingCount - 1));
 
   return (
