@@ -1270,13 +1270,26 @@ def generate_connection_holes(connections, params):
         span = width - edge * 2
         spacing = span / max(1, count - 1)
 
+        part_height = conn.part_a.get("height", 100)
+
         for i in range(count):
             x = edge + i * spacing
+
+            # Position based on connection type
+            if conn.connection_type == "rail_to_leg":
+                y = part_height / 2
+
+            elif conn.connection_type == "top_to_rail":
+                y = part_height - (diameter * 2)
+
+            else:
+                y = 20
+
             holes.append({
                 "part": conn.part_a.get("name"),
                 "connected_to": conn.part_b.get("name"),
                 "x": round(x, 2),
-                "y": 20,
+                "y": round(y, 2),
                 "diameter": diameter,
                 "type": conn.connection_type
             })
