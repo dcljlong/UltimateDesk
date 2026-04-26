@@ -1,8 +1,19 @@
 import React from 'react';
 
 const JoineryView = ({ params }) => {
+  const width = Number(params?.width || 1800);
   const isOversize = params?.is_oversize;
   const hasCentreSupport = params?.requires_centre_support;
+
+  const railFixingCount = width >= 2400 ? 7 : width >= 1800 ? 5 : 4;
+  const railEdgeOffset = 30;
+  const railSpan = 300;
+  const railSpacing = Math.round((railSpan - railEdgeOffset * 2) / Math.max(1, railFixingCount - 1));
+
+  const topFixingCount = width >= 2400 ? 6 : width >= 1800 ? 4 : 3;
+  const topEdgeOffset = 40;
+  const topSpan = 400;
+  const topSpacing = Math.round((topSpan - topEdgeOffset * 2) / Math.max(1, topFixingCount - 1));
 
   return (
     <div className="p-4 space-y-4">
@@ -22,30 +33,26 @@ const JoineryView = ({ params }) => {
           <rect x="140" y="180" width="300" height="20" fill="#111827" />
 
           {/* Rail fixings - calculated spacing */}
-          {Array.from({ length: 5 }).map((_, i) => {
-            const edgeOffset = 30;
-            const spacing = (300 - edgeOffset * 2) / 4;
-            const x = 140 + edgeOffset + i * spacing;
+          {Array.from({ length: railFixingCount }).map((_, i) => {
+            const x = 140 + railEdgeOffset + i * railSpacing;
             return <circle key={i} cx={x} cy={190} r="4" fill="#ef4444" />;
           })}
 
           <text x="300" y="220" textAnchor="middle" fontSize="12">
-            5 x screws | 5mm pilot | 30mm edge offset | {Math.round((300 - 60) / 4)}mm spacing
+            {railFixingCount} x screws | 5mm pilot | {railEdgeOffset}mm edge offset | {railSpacing}mm spacing
           </text>
 
           {/* Desktop */}
           <rect x="80" y="100" width="400" height="20" fill="#d6ad72" />
 
           {/* Top fixings - calculated spacing */}
-          {Array.from({ length: 4 }).map((_, i) => {
-            const edgeOffset = 40;
-            const spacing = (400 - edgeOffset * 2) / 3;
-            const x = 80 + edgeOffset + i * spacing;
+          {Array.from({ length: topFixingCount }).map((_, i) => {
+            const x = 80 + topEdgeOffset + i * topSpacing;
             return <circle key={i} cx={x} cy={110} r="4" fill="#2563eb" />;
           })}
 
           <text x="300" y="90" textAnchor="middle" fontSize="12">
-            top fix from underside | 4 x screws | 40mm edge offset
+            top fix from underside | {topFixingCount} x screws | {topEdgeOffset}mm edge offset | {topSpacing}mm spacing
           </text>
 
           {/* Centre support */}
