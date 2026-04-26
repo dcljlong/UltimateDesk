@@ -49,7 +49,7 @@ const BuildViews2D = ({ params }) => {
         <div>
           <h2 className="text-lg font-bold">2D Build Views</h2>
           <p className="text-sm text-[var(--text-secondary)]">
-            Plan, front, and side views for checking desk logic before export.
+            Plan, user-side, and side views for checking desk logic before export.
           </p>
         </div>
 
@@ -166,7 +166,7 @@ const BuildViews2D = ({ params }) => {
 
         <div className={panelClass}>
           <div className={titleClass}>User-side elevation</div>
-          <div className={subClass}>Shows the open sitting side, knee zone, legs, rails, and centre support set back from the user.</div>
+          <div className={subClass}>Shows the open sitting side and knee zone. Centre support is rear-set and should not block the user's knees.</div>
 
           <svg viewBox="0 0 780 420" className="w-full rounded-xl bg-white text-slate-900">
             <line x1="70" y1="360" x2="710" y2="360" stroke="#cbd5e1" strokeWidth="2" />
@@ -175,12 +175,46 @@ const BuildViews2D = ({ params }) => {
             <rect x={frontX + 45} y={frontY - frontH + 10} width="12" height={frontH - 10} fill="#111827" />
             <rect x={frontX + frontW - 57} y={frontY - frontH + 10} width="12" height={frontH - 10} fill="#111827" />
             <rect x={frontX + 75} y={frontY - frontH + frontH * 0.52} width={frontW - 150} height="18" fill="#111827" />
+            <rect
+              x={frontX + 92}
+              y={frontY - frontH + frontH * 0.28}
+              width={frontW - 184}
+              height={frontH * 0.52}
+              fill="rgba(34,197,94,0.08)"
+              stroke="rgba(34,197,94,0.45)"
+              strokeDasharray="8 6"
+              strokeWidth="2"
+            />
+            <text x={frontX + frontW / 2} y={frontY - frontH + frontH * 0.42} textAnchor="middle" style={labelStyle}>
+              open knee zone
+            </text>
             <rect x={frontX + 110} y={frontY - frontH + frontH * 0.62} width={frontW - 220} height="56" fill="#1f2937" />
 
             {hasCentreSupport && (
               <>
-                <rect x={frontX + frontW / 2 - 6} y={frontY - frontH + 10} width="12" height={frontH - 10} fill="#111827" />
-                <rect x={frontX + frontW / 2 - 46} y={frontY - 12} width="92" height="12" fill="#111827" />
+                <rect
+                  x={frontX + frontW / 2 - 5}
+                  y={frontY - frontH + 28}
+                  width="10"
+                  height={frontH - 54}
+                  fill="rgba(17,24,39,0.38)"
+                  stroke="#111827"
+                  strokeDasharray="7 5"
+                  strokeWidth="2"
+                />
+                <rect
+                  x={frontX + frontW / 2 - 44}
+                  y={frontY - 24}
+                  width="88"
+                  height="10"
+                  fill="rgba(17,24,39,0.38)"
+                  stroke="#111827"
+                  strokeDasharray="7 5"
+                  strokeWidth="2"
+                />
+                <text x={frontX + frontW / 2 + 18} y={frontY - frontH + 52} style={dimStyle}>
+                  rear-set support
+                </text>
               </>
             )}
 
@@ -197,7 +231,7 @@ const BuildViews2D = ({ params }) => {
 
             <text x="390" y="34" textAnchor="middle" style={labelStyle}>USER-SIDE ELEVATION</text>
             <text x="390" y="390" textAnchor="middle" style={dimStyle}>Width: {width}mm</text>
-            <text x="390" y="374" textAnchor="middle" style={labelStyle}>OPEN USER / SITTING SIDE</text>
+            <text x="390" y="374" textAnchor="middle" style={labelStyle}>OPEN USER / SITTING SIDE - CENTRE SUPPORT SET BACK</text>
             <text x={frontX + frontW + 24} y={frontY - frontH / 2} style={dimStyle} transform={`rotate(90 ${frontX + frontW + 24} ${frontY - frontH / 2})`}>
               Height: {height}mm
             </text>
