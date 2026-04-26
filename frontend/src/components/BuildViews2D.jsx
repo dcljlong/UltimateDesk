@@ -160,7 +160,7 @@ const BuildViews2D = ({ params }) => {
           </div>
 
           <div className="mt-4 rounded-xl border border-[var(--border)] p-3 text-xs text-[var(--text-secondary)]">
-            User side is the open sitting edge. Rear side is the cable tray/service side. Centre support is shown set back toward the rear to preserve knee clearance. Final dimensions, joinery, tooling, feeds, hold-down, and CAM setup must still be checked before cutting.
+            User side is the open sitting edge. Rear side is the cable tray/service side. {hasCentreSupport ? 'Centre support is shown set back toward the rear to preserve knee clearance. ' : ''}Final dimensions, joinery, tooling, feeds, hold-down, and CAM setup must still be checked before cutting.
           </div>
         </div>
 
@@ -231,7 +231,9 @@ const BuildViews2D = ({ params }) => {
 
             <text x="390" y="34" textAnchor="middle" style={labelStyle}>USER-SIDE ELEVATION</text>
             <text x="390" y="390" textAnchor="middle" style={dimStyle}>Width: {width}mm</text>
-            <text x="390" y="374" textAnchor="middle" style={labelStyle}>OPEN USER / SITTING SIDE - CENTRE SUPPORT SET BACK</text>
+            <text x="390" y="374" textAnchor="middle" style={labelStyle}>
+              {hasCentreSupport ? 'OPEN USER / SITTING SIDE - CENTRE SUPPORT SET BACK' : 'OPEN USER / SITTING SIDE'}
+            </text>
             <text x={frontX + frontW + 24} y={frontY - frontH / 2} style={dimStyle} transform={`rotate(90 ${frontX + frontW + 24} ${frontY - frontH / 2})`}>
               Height: {height}mm
             </text>
