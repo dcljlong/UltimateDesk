@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 
 const JoineryView = ({ params }) => {
   const isOversize = params?.is_oversize;
@@ -21,10 +21,13 @@ const JoineryView = ({ params }) => {
           {/* Rail */}
           <rect x="140" y="180" width="300" height="20" fill="#111827" />
 
-          {/* Screws */}
-          {[0,1,2,3].map(i => (
-            <circle key={i} cx={160 + i*80} cy={190} r="4" fill="#ef4444" />
-          ))}
+          {/* Rail fixings - calculated spacing */}
+          {Array.from({ length: 5 }).map((_, i) => {
+            const edgeOffset = 30;
+            const spacing = (300 - edgeOffset * 2) / 4;
+            const x = 140 + edgeOffset + i * spacing;
+            return <circle key={i} cx={x} cy={190} r="4" fill="#ef4444" />;
+          })}
 
           <text x="300" y="220" textAnchor="middle" fontSize="12">
             screw fixings (typ.)
@@ -33,10 +36,13 @@ const JoineryView = ({ params }) => {
           {/* Desktop */}
           <rect x="80" y="100" width="400" height="20" fill="#d6ad72" />
 
-          {/* Top fix */}
-          {[0,1,2].map(i => (
-            <circle key={i} cx={160 + i*100} cy={110} r="4" fill="#2563eb" />
-          ))}
+          {/* Top fixings - calculated spacing */}
+          {Array.from({ length: 4 }).map((_, i) => {
+            const edgeOffset = 40;
+            const spacing = (400 - edgeOffset * 2) / 3;
+            const x = 80 + edgeOffset + i * spacing;
+            return <circle key={i} cx={x} cy={110} r="4" fill="#2563eb" />;
+          })}
 
           <text x="300" y="90" textAnchor="middle" fontSize="12">
             top fix from underside
