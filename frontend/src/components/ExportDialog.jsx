@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import {
   Download,
@@ -41,6 +41,64 @@ const FILE_META = {
   pdf:   { Icon: FilePdf,  label: 'PDF',    color: 'text-red-500',   hint: 'Cut-sheet reference' },
 };
 
+const DEFAULT_CNC_CONFIG = {
+  bit_size: 6,
+  cut_depth_per_pass: 3,
+  sheet_width: 2400,
+  sheet_height: 1200,
+  material_thickness: 18,
+  material: '18mm NZ Plywood',
+  material_name: '18mm NZ Plywood',
+  feed_rate: 1500,
+  plunge_rate: 300,
+  spindle_speed: 18000,
+  machine_post: 'generic_grbl_metric',
+  post_processor: 'generic_grbl_metric',
+  tool_number: 1,
+  tool_name: '6mm flat end mill',
+  spindle_rotation: 'CW',
+  cut_strategy: 'climb',
+  safe_height: 10,
+  retract_height: 3,
+  stock_margin: 0,
+  lead_in_length: 0,
+  lead_out_length: 0,
+  tab_length: 0,
+  tab_skin: 0,
+  pocket_stepover: 0,
+  pocket_finish_allowance: 0,
+};
+
+const CNC_POST_OPTIONS = [
+  { value: 'generic_grbl_metric', label: 'Generic GRBL metric' },
+  { value: 'mach3', label: 'Mach3 metric' },
+  { value: 'mach4', label: 'Mach4 metric' },
+  { value: 'linuxcnc', label: 'LinuxCNC metric' },
+  { value: 'fanuc_metric', label: 'Fanuc-style metric' },
+  { value: 'haas_metric', label: 'Haas-style metric' },
+];
+
+const CNC_NUMBER_FIELDS = new Set([
+  'bit_size',
+  'cut_depth_per_pass',
+  'sheet_width',
+  'sheet_height',
+  'material_thickness',
+  'feed_rate',
+  'plunge_rate',
+  'spindle_speed',
+  'tool_number',
+  'safe_height',
+  'retract_height',
+  'stock_margin',
+  'lead_in_length',
+  'lead_out_length',
+  'tab_length',
+  'tab_skin',
+  'pocket_stepover',
+  'pocket_finish_allowance',
+]);
+
 const ExportDialog = ({ isOpen, onClose, params, designName }) => {
   const { isAuthenticated, isPro } = useAuth();
   const navigate = useNavigate();
@@ -60,6 +118,7 @@ const ExportDialog = ({ isOpen, onClose, params, designName }) => {
   const [shareLink, setShareLink] = useState(null);
   const [isSharing, setIsSharing] = useState(false);
   const [shareCopied, setShareCopied] = useState(false);
+  const [cncConfig, setCncConfig] = useState(DEFAULT_CNC_CONFIG);
 
   // Load bundle catalog once
   useEffect(() => {
@@ -136,9 +195,16 @@ const ExportDialog = ({ isOpen, onClose, params, designName }) => {
     setIsGenerating(true);
     setError(null);
     try {
+      const payload = {
+        params,
+        design_name: designName,
+        bundle,
+        cnc_config: includedFiles.includes('gcode') ? cncConfig : undefined,
+      };
+
       const { data } = await axios.post(
         `${API}/exports/generate`,
-        { params, design_name: designName, bundle },
+        payload,
         { withCredentials: true }
       );
       setExportResult(data);
@@ -162,6 +228,21 @@ const ExportDialog = ({ isOpen, onClose, params, designName }) => {
       window.open(fileUrl, '_blank');
     }
   };
+
+  const updateCncConfig = (key, value) => {
+    const nextValue = CNC_NUMBER_FIELDS.has(key) ? Number(value) : value;
+    setCncConfig((prev) => {
+      const next = { ...prev, [key]: nextValue };
+      if (key === 'machine_post') next.post_processor = value;
+      if (key === 'material') next.material_name = value;
+      if (key === 'bit_size' && (!prev.tool_name || prev.tool_name.includes('flat end mill'))) {
+        next.tool_name = `${nextValue}mm flat end mill`;
+      }
+      return next;
+    });
+  };
+
+  const resetCncConfig = () => setCncConfig(DEFAULT_CNC_CONFIG);
 
   const handleClose = () => {
     setExportResult(null);
@@ -407,6 +488,138 @@ const ExportDialog = ({ isOpen, onClose, params, designName }) => {
                 <p className="text-sm text-[var(--text-secondary)]">Calculating...</p>
               )}
             </div>
+
+            {includedFiles.includes('gcode') && (
+              <div className="neu-surface p-4 rounded-xl border border-[var(--border)]" data-testid="cnc-settings-panel">
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <div>
+                    <h3 className="font-bold text-sm flex items-center gap-2">
+                      <Cube size={16} className="text-green-500" />
+                      CNC machine settings for NC export
+                    </h3>
+                    <p className="text-xs text-[var(--text-secondary)] mt-1">
+                      These settings are written into the generated NC file and used by the backend G-code engine.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={resetCncConfig}
+                    className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] underline"
+                    data-testid="reset-cnc-config-btn"
+                  >
+                    Reset
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <label className="text-xs font-semibold">
+                    Machine post
+                    <select
+                      value={cncConfig.machine_post}
+                      onChange={(e) => updateCncConfig('machine_post', e.target.value)}
+                      className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm"
+                      data-testid="cnc-machine-post"
+                    >
+                      {CNC_POST_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="text-xs font-semibold">
+                    Material
+                    <input
+                      value={cncConfig.material}
+                      onChange={(e) => updateCncConfig('material', e.target.value)}
+                      className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm"
+                      data-testid="cnc-material"
+                    />
+                  </label>
+
+                  <label className="text-xs font-semibold">
+                    Bit size mm
+                    <input
+                      type="number"
+                      min="1"
+                      step="0.5"
+                      value={cncConfig.bit_size}
+                      onChange={(e) => updateCncConfig('bit_size', e.target.value)}
+                      className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm"
+                      data-testid="cnc-bit-size"
+                    />
+                  </label>
+
+                  <label className="text-xs font-semibold">
+                    Depth/pass mm
+                    <input
+                      type="number"
+                      min="0.5"
+                      step="0.5"
+                      value={cncConfig.cut_depth_per_pass}
+                      onChange={(e) => updateCncConfig('cut_depth_per_pass', e.target.value)}
+                      className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm"
+                      data-testid="cnc-cut-depth"
+                    />
+                  </label>
+
+                  <label className="text-xs font-semibold">
+                    Feed mm/min
+                    <input
+                      type="number"
+                      min="100"
+                      step="50"
+                      value={cncConfig.feed_rate}
+                      onChange={(e) => updateCncConfig('feed_rate', e.target.value)}
+                      className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm"
+                      data-testid="cnc-feed-rate"
+                    />
+                  </label>
+
+                  <label className="text-xs font-semibold">
+                    Plunge mm/min
+                    <input
+                      type="number"
+                      min="50"
+                      step="25"
+                      value={cncConfig.plunge_rate}
+                      onChange={(e) => updateCncConfig('plunge_rate', e.target.value)}
+                      className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm"
+                      data-testid="cnc-plunge-rate"
+                    />
+                  </label>
+
+                  <label className="text-xs font-semibold">
+                    Spindle RPM
+                    <input
+                      type="number"
+                      min="1000"
+                      step="500"
+                      value={cncConfig.spindle_speed}
+                      onChange={(e) => updateCncConfig('spindle_speed', e.target.value)}
+                      className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm"
+                      data-testid="cnc-spindle-speed"
+                    />
+                  </label>
+
+                  <label className="text-xs font-semibold">
+                    Stock margin mm
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={cncConfig.stock_margin}
+                      onChange={(e) => updateCncConfig('stock_margin', e.target.value)}
+                      className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm"
+                      data-testid="cnc-stock-margin"
+                    />
+                  </label>
+                </div>
+
+                <div className="mt-3 rounded-lg bg-yellow-500/10 border border-yellow-500/30 p-3 text-xs text-[var(--text-secondary)]">
+                  Verify exported NC in your CAM/controller preview before cutting. GRBL uses explicit drill moves; Mach/LinuxCNC/Fanuc/Haas posts may use canned drill cycles.
+                </div>
+              </div>
+            )}
 
             {/* Action area */}
             {isChecking ? (
