@@ -785,7 +785,7 @@ Rules:
 
 
 def calculate_desk_parts(params: DesignParams) -> List[Dict[str, Any]]:
-    """Generate export parts from the same straight-frame desk logic the preview uses."""
+    """Generate export parts with CNC feature metadata: drill points, pockets, and cutouts."""
     parts: List[Dict[str, Any]] = []
 
     width = max(1000, int(params.width))
@@ -800,18 +800,128 @@ def calculate_desk_parts(params: DesignParams) -> List[Dict[str, Any]]:
     clear_span_x = max(300, width - ((leg_inset_x + leg_size) * 2))
     clear_span_y = max(220, depth - ((leg_inset_y + leg_size) * 2))
 
-    def add_part(name: str, part_w: float, part_h: float, qty: int = 1, kind: str = "panel") -> None:
+    def add_part(
+        name: str,
+        part_w: float,
+        part_h: float,
+        qty: int = 1,
+        kind: str = "panel",
+        drill_points: Optional[List[Dict[str, Any]]] = None,
+        cutouts: Optional[List[Dict[str, Any]]] = None,
+        pockets: Optional[List[Dict[str, Any]]] = None,
+    ) -> None:
         part_w = int(round(part_w))
         part_h = int(round(part_h))
         if part_w <= 0 or part_h <= 0 or qty <= 0:
             return
-        parts.append({
+
+        part = {
             "name": name,
             "width": part_w,
             "height": part_h,
             "quantity": qty,
             "type": kind,
-        })
+        }
+
+        if drill_points:
+            part["drill_points"] = drill_points
+        if cutouts:
+            part["cutouts"] = cutouts
+        if pockets:
+            part["pockets"] = pockets
+
+        parts.append(part)
+
+    def clamp(value: float, low: float, high: float) -> float:
+        return max(low, min(high, value))
+
+    def drill(name: str, x: float, y: float, diameter: float = 5, depth_value: float = 10) -> Dict[str, Any]:
+        return {
+            "name": name,
+            "x": round(float(x), 2),
+            "y": round(float(y), 2),
+            "diameter": diameter,
+            "depth": min(float(depth_value), t),
+        }
+
+    def rect_cutout(name: str, x: float, y: float, w: float, h: float) -> Dict[str, Any]:
+        return {
+            "name": name,
+            "type": "cutout",
+            "shape": "rectangle",
+            "x": round(float(x), 2),
+            "y": round(float(y), 2),
+            "width": round(float(w), 2),
+            "height": round(float(h), 2),
+        }
+
+    def rect_pocket(name: str, x: float, y: float, w: float, h: float, depth_value: float = 6) -> Dict[str, Any]:
+        return {
+            "name": name,
+            "type": "pocket",
+            "shape": "rectangle",
+            "x": round(float(x), 2),
+            "y": round(float(y), 2),
+            "width": round(float(w), 2),
+            "height": round(float(h), 2),
+            "depth": min(float(depth_value), max(1, t - 1)),
+        }
+
+    def line_drills(prefix: str, part_w: float, y: float, count: int, edge: float = 45, diameter: float = 5, depth_value: float = 10) -> List[Dict[str, Any]]:
+        if count <= 1:
+            return [drill(f"{prefix} 1", part_w / 2, y, diameter, depth_value)]
+
+        span = max(1, part_w - edge * 2)
+        return [
+            drill(
+                f"{prefix} {i + 1}",
+                edge + (span * i / (count - 1)),
+                y,
+                diameter,
+                depth_value,
+            )
+            for i in range(count)
+        ]
+
+    def corner_drills(prefix: str, part_w: float, part_h: float, inset: float = 24, diameter: float = 5, depth_value: float = 10) -> List[Dict[str, Any]]:
+        return [
+            drill(f"{prefix} FL", inset, inset, diameter, depth_value),
+            drill(f"{prefix} FR", part_w - inset, inset, diameter, depth_value),
+            drill(f"{prefix} RL", inset, part_h - inset, diameter, depth_value),
+            drill(f"{prefix} RR", part_w - inset, part_h - inset, diameter, depth_value),
+        ]
+
+    def desktop_features(part_w: float, part_h: float, panel_name: str) -> Dict[str, List[Dict[str, Any]]]:
+        drill_points: List[Dict[str, Any]] = []
+        cutouts: List[Dict[str, Any]] = []
+        pockets: List[Dict[str, Any]] = []
+
+        rail_fix_count = 7 if part_w >= 1800 else 5
+        drill_points.extend(line_drills("rear rail fixing", part_w, clamp(part_h - 55, 35, part_h - 25), rail_fix_count, edge=75, diameter=4, depth_value=10))
+        drill_points.extend(line_drills("front rail fixing", part_w, 55, rail_fix_count, edge=75, diameter=4, depth_value=10))
+
+        if params.has_cable_management:
+            cable_w = min(180, max(90, part_w * 0.10))
+            cable_h = 42
+            cutouts.append(rect_cutout("rear cable pass-through", (part_w - cable_w) / 2, clamp(part_h - 115, 70, part_h - 70), cable_w, cable_h))
+
+        if params.has_vesa_mount:
+            cx = part_w / 2
+            cy = clamp(part_h - 145, 110, part_h - 90)
+            for dx in (-50, 50):
+                for dy in (-50, 50):
+                    drill_points.append(drill("VESA/top mounting pilot", cx + dx, cy + dy, 5, 12))
+
+        if params.has_mixer_tray and "Right" not in panel_name:
+            pocket_w = min(max(int(params.mixer_tray_width or 520), 280), max(280, part_w - 180))
+            pocket_h = min(210, max(120, part_h * 0.28))
+            pockets.append(rect_pocket("mixer tray underside rebate", (part_w - pocket_w) / 2, 95, pocket_w, pocket_h, 6))
+
+        return {
+            "drill_points": drill_points,
+            "cutouts": cutouts,
+            "pockets": pockets,
+        }
 
     is_oversize = bool(getattr(params, "is_oversize", False)) or width > 2400
     desktop_split_count = 2 if is_oversize else 1
@@ -820,75 +930,118 @@ def calculate_desk_parts(params: DesignParams) -> List[Dict[str, Any]]:
     if desktop_split_count > 1:
         left_top_w = int(math.ceil(width / 2))
         right_top_w = width - left_top_w
-        add_part("Desktop Top Left Panel", left_top_w, depth)
-        add_part("Desktop Top Right Panel", right_top_w, depth)
-        add_part("Desktop Centre Join Plate", 180, max(300, min(depth - 120, 650)))
+        left_features = desktop_features(left_top_w, depth, "Desktop Top Left Panel")
+        right_features = desktop_features(right_top_w, depth, "Desktop Top Right Panel")
+        add_part("Desktop Top Left Panel", left_top_w, depth, drill_points=left_features["drill_points"], cutouts=left_features["cutouts"], pockets=left_features["pockets"])
+        add_part("Desktop Top Right Panel", right_top_w, depth, drill_points=right_features["drill_points"], cutouts=right_features["cutouts"], pockets=right_features["pockets"])
+        add_part(
+            "Desktop Centre Join Plate",
+            180,
+            max(300, min(depth - 120, 650)),
+            drill_points=corner_drills("centre join plate fixing", 180, max(300, min(depth - 120, 650)), inset=32, diameter=5, depth_value=12),
+        )
     else:
-        add_part("Desktop Top", width, depth)
+        top_features = desktop_features(width, depth, "Desktop Top")
+        add_part("Desktop Top", width, depth, drill_points=top_features["drill_points"], cutouts=top_features["cutouts"], pockets=top_features["pockets"])
 
-    add_part("Leg Post FL", leg_size, height - t)
-    add_part("Leg Post FR", leg_size, height - t)
-    add_part("Leg Post RL", leg_size, height - t)
-    add_part("Leg Post RR", leg_size, height - t)
+    leg_h = height - t
+    leg_holes = lambda label: [
+        drill(f"{label} upper rail fixing A", leg_size / 2, clamp(leg_h - 80, 40, leg_h - 20), 5, 12),
+        drill(f"{label} upper rail fixing B", leg_size / 2, clamp(leg_h - 145, 40, leg_h - 20), 5, 12),
+        drill(f"{label} lower rail fixing A", leg_size / 2, 85, 5, 12),
+        drill(f"{label} lower rail fixing B", leg_size / 2, 145, 5, 12),
+    ]
+    add_part("Leg Post FL", leg_size, leg_h, drill_points=leg_holes("FL leg"))
+    add_part("Leg Post FR", leg_size, leg_h, drill_points=leg_holes("FR leg"))
+    add_part("Leg Post RL", leg_size, leg_h, drill_points=leg_holes("RL leg"))
+    add_part("Leg Post RR", leg_size, leg_h, drill_points=leg_holes("RR leg"))
+
+    rail_count = 7 if clear_span_x >= 1800 else 5
+    rear_rail_holes = lambda rail_w, label: line_drills(f"{label} rail top fixing", rail_w, 21, rail_count, edge=55, diameter=5, depth_value=12)
+    lower_rail_holes = lambda rail_w, label: line_drills(f"{label} rail fixing", rail_w, 15, rail_count, edge=55, diameter=5, depth_value=12)
 
     if is_oversize:
         rear_left = int(math.ceil(clear_span_x / 2))
         rear_right = clear_span_x - rear_left
-        add_part("Rear Upper Rail Left", rear_left, 42)
-        add_part("Rear Upper Rail Right", rear_right, 42)
-        add_part("Front Lower Rail Left", rear_left, 30)
-        add_part("Front Lower Rail Right", rear_right, 30)
+        add_part("Rear Upper Rail Left", rear_left, 42, drill_points=rear_rail_holes(rear_left, "rear left"))
+        add_part("Rear Upper Rail Right", rear_right, 42, drill_points=rear_rail_holes(rear_right, "rear right"))
+        add_part("Front Lower Rail Left", rear_left, 30, drill_points=lower_rail_holes(rear_left, "front left"))
+        add_part("Front Lower Rail Right", rear_right, 30, drill_points=lower_rail_holes(rear_right, "front right"))
     else:
-        add_part("Rear Upper Rail", clear_span_x, 42)
-        add_part("Front Lower Rail", clear_span_x, 30)
+        add_part("Rear Upper Rail", clear_span_x, 42, drill_points=rear_rail_holes(clear_span_x, "rear"))
+        add_part("Front Lower Rail", clear_span_x, 30, drill_points=lower_rail_holes(clear_span_x, "front"))
 
-    add_part("Left Side Rail", clear_span_y, 30)
-    add_part("Right Side Rail", clear_span_y, 30)
+    add_part("Left Side Rail", clear_span_y, 30, drill_points=lower_rail_holes(clear_span_y, "left side"))
+    add_part("Right Side Rail", clear_span_y, 30, drill_points=lower_rail_holes(clear_span_y, "right side"))
 
     if requires_centre_support:
-        add_part("Centre Support Post", leg_size, height - t)
-        add_part("Centre Support Foot", 320, 90)
-        add_part("Centre Under-Top Support Rail", max(420, min(int(width * 0.32), 900)), 55)
+        add_part("Centre Support Post", leg_size, leg_h, drill_points=leg_holes("centre support"))
+        add_part("Centre Support Foot", 320, 90, drill_points=corner_drills("centre support foot", 320, 90, inset=25, diameter=5, depth_value=12))
+        add_part(
+            "Centre Under-Top Support Rail",
+            max(420, min(int(width * 0.32), 900)),
+            55,
+            drill_points=line_drills("centre under-top support fixing", max(420, min(int(width * 0.32), 900)), 27.5, 4, edge=45, diameter=5, depth_value=12),
+        )
 
     back_panel_w = max(600, clear_span_x - 40)
     back_panel_h = 180 if params.desk_type == "office" else 220
-    add_part("Back Modesty Panel", back_panel_w, back_panel_h)
+    back_panel_cutouts = []
+    if params.has_cable_management:
+        back_panel_cutouts.append(rect_cutout("modesty cable slot", (back_panel_w - 220) / 2, clamp(back_panel_h - 70, 45, back_panel_h - 45), 220, 36))
+    add_part(
+        "Back Modesty Panel",
+        back_panel_w,
+        back_panel_h,
+        drill_points=line_drills("modesty panel top fixing", back_panel_w, back_panel_h - 28, 5, edge=55, diameter=5, depth_value=12),
+        cutouts=back_panel_cutouts,
+    )
 
     if params.has_cable_management:
         tray_w = max(500, min(width - (leg_inset_x * 2) - 120, int(width * 0.60)))
-        add_part("Cable Tray Base", tray_w, 85)
-        add_part("Cable Tray Front", tray_w, 50)
-        add_part("Cable Tray Back", tray_w, 50)
-        add_part("Cable Tray End Left", 85, 50)
-        add_part("Cable Tray End Right", 85, 50)
+        add_part(
+            "Cable Tray Base",
+            tray_w,
+            85,
+            drill_points=corner_drills("cable tray base fixing", tray_w, 85, inset=22, diameter=5, depth_value=12),
+            cutouts=[rect_cutout("cable tray tie slot", tray_w / 2 - 45, 24, 90, 28)],
+        )
+        add_part("Cable Tray Front", tray_w, 50, drill_points=line_drills("cable tray front fixing", tray_w, 25, 4, edge=45, diameter=4, depth_value=10))
+        add_part("Cable Tray Back", tray_w, 50, drill_points=line_drills("cable tray back fixing", tray_w, 25, 4, edge=45, diameter=4, depth_value=10))
+        add_part("Cable Tray End Left", 85, 50, drill_points=corner_drills("cable tray left end fixing", 85, 50, inset=18, diameter=4, depth_value=10))
+        add_part("Cable Tray End Right", 85, 50, drill_points=corner_drills("cable tray right end fixing", 85, 50, inset=18, diameter=4, depth_value=10))
 
     if params.has_headset_hook:
-        add_part("Headset Hook Backplate", 90, 30)
-        add_part("Headset Hook Arm", 60, 30)
+        add_part("Headset Hook Backplate", 90, 30, drill_points=[drill("headset hook fixing A", 24, 15, 5, 12), drill("headset hook fixing B", 66, 15, 5, 12)])
+        add_part("Headset Hook Arm", 60, 30, drill_points=[drill("headset hook arm fixing", 18, 15, 5, 12)])
 
     if params.has_gpu_tray:
-        add_part("GPU Tray Base", 150, 70)
-        add_part("GPU Tray Side Left", 70, 70)
-        add_part("GPU Tray Side Right", 70, 70)
-        add_part("GPU Tray Front Stop", 150, 25)
+        add_part("GPU Tray Base", 150, 70, drill_points=corner_drills("gpu tray base fixing", 150, 70, inset=18, diameter=4, depth_value=10))
+        add_part("GPU Tray Side Left", 70, 70, drill_points=corner_drills("gpu tray side left fixing", 70, 70, inset=18, diameter=4, depth_value=10))
+        add_part("GPU Tray Side Right", 70, 70, drill_points=corner_drills("gpu tray side right fixing", 70, 70, inset=18, diameter=4, depth_value=10))
+        add_part("GPU Tray Front Stop", 150, 25, drill_points=line_drills("gpu tray front stop fixing", 150, 12.5, 3, edge=25, diameter=4, depth_value=10))
 
     if params.has_mixer_tray:
         tray_w = max(280, min(int(params.mixer_tray_width or 520), clear_span_x))
-        add_part("Mixer Tray", tray_w, 170)
-        add_part("Mixer Tray Support Left", 170, 120)
-        add_part("Mixer Tray Support Right", 170, 120)
-        add_part("Mixer Tray Front Lip", tray_w, 40)
+        add_part("Mixer Tray", tray_w, 170, pockets=[rect_pocket("mixer anti-slip rebate", 35, 30, tray_w - 70, 110, 4)], drill_points=corner_drills("mixer tray fixing", tray_w, 170, inset=24, diameter=5, depth_value=12))
+        add_part("Mixer Tray Support Left", 170, 120, drill_points=corner_drills("mixer left support fixing", 170, 120, inset=24, diameter=5, depth_value=12))
+        add_part("Mixer Tray Support Right", 170, 120, drill_points=corner_drills("mixer right support fixing", 170, 120, inset=24, diameter=5, depth_value=12))
+        add_part("Mixer Tray Front Lip", tray_w, 40, drill_points=line_drills("mixer tray front lip fixing", tray_w, 20, 4, edge=45, diameter=4, depth_value=10))
 
     if getattr(params, "has_pedal_tilt", False):
-        add_part("Pedal Platform", 500, 240)
-        add_part("Pedal Support Left", 240, 120)
-        add_part("Pedal Support Right", 240, 120)
+        add_part("Pedal Platform", 500, 240, drill_points=corner_drills("pedal platform fixing", 500, 240, inset=28, diameter=5, depth_value=12))
+        add_part("Pedal Support Left", 240, 120, drill_points=corner_drills("pedal left support fixing", 240, 120, inset=24, diameter=5, depth_value=12))
+        add_part("Pedal Support Right", 240, 120, drill_points=corner_drills("pedal right support fixing", 240, 120, inset=24, diameter=5, depth_value=12))
 
     if params.has_vesa_mount:
-        add_part("VESA Upright", 180, 100)
-        add_part("VESA Mount Plate", 200, 200)
-        add_part("VESA Gusset Left", 120, 120)
-        add_part("VESA Gusset Right", 120, 120)
+        add_part("VESA Upright", 180, 100, drill_points=corner_drills("vesa upright fixing", 180, 100, inset=24, diameter=5, depth_value=12))
+        vesa_holes = []
+        for dx in (-50, 50):
+            for dy in (-50, 50):
+                vesa_holes.append(drill("VESA 100 mount hole", 100 + dx, 100 + dy, 5, 12))
+        add_part("VESA Mount Plate", 200, 200, drill_points=vesa_holes + corner_drills("vesa plate fixing", 200, 200, inset=24, diameter=5, depth_value=12))
+        add_part("VESA Gusset Left", 120, 120, drill_points=corner_drills("vesa left gusset fixing", 120, 120, inset=24, diameter=5, depth_value=12))
+        add_part("VESA Gusset Right", 120, 120, drill_points=corner_drills("vesa right gusset fixing", 120, 120, inset=24, diameter=5, depth_value=12))
 
     return parts
 
@@ -949,11 +1102,79 @@ def generate_joinery_holes(parts, params):
     return holes
 
 def simple_nesting(parts: List[Dict], sheet_width: int, sheet_height: int) -> NestingResult:
-    """Simple bin packing algorithm for sheet nesting"""
-    # Add margin for cuts
+    """Simple bin packing algorithm for sheet nesting while preserving CNC feature metadata."""
     margin = 18
+    feature_keys = (
+        "drill_points",
+        "holes",
+        "joinery_holes",
+        "connector_holes",
+        "cutouts",
+        "inside_profiles",
+        "internal_profiles",
+        "internal_cutouts",
+        "pockets",
+        "rebates",
+        "trays",
+        "pocket_features",
+        "recesses",
+    )
 
-    # Sort parts by area (largest first)
+    def clone_feature_item(item: Dict[str, Any], source_w: float, source_h: float, rotated: bool) -> Dict[str, Any]:
+        cloned = dict(item)
+        if not rotated:
+            return cloned
+
+        # Rotation used by nesting is 90 degrees: original local X/Y maps into rotated panel space.
+        x = float(cloned.get("x", cloned.get("left", cloned.get("center_x", cloned.get("cx", 0))) or 0))
+        y = float(cloned.get("y", cloned.get("bottom", cloned.get("top", cloned.get("center_y", cloned.get("cy", 0)))) or 0))
+        w = float(cloned.get("width", cloned.get("w", 0)) or 0)
+        h = float(cloned.get("height", cloned.get("h", 0)) or 0)
+
+        if w > 0 and h > 0:
+            cloned["x"] = round(y, 2)
+            cloned["y"] = round(source_w - x - w, 2)
+            cloned["width"] = round(h, 2)
+            cloned["height"] = round(w, 2)
+        else:
+            cloned["x"] = round(y, 2)
+            cloned["y"] = round(source_w - x, 2)
+
+        return cloned
+
+    def copy_feature_list(items, source_w: float, source_h: float, rotated: bool):
+        if isinstance(items, dict):
+            items = list(items.values())
+        if not isinstance(items, list):
+            return []
+        return [
+            clone_feature_item(item, source_w, source_h, rotated)
+            for item in items
+            if isinstance(item, dict)
+        ]
+
+    def placed_part(part: Dict[str, Any], x: float, y: float, rotated: bool) -> Dict[str, Any]:
+        source_w = part["width"]
+        source_h = part["height"]
+
+        placed = {
+            "name": part["name"],
+            "x": x,
+            "y": y,
+            "width": source_h if rotated else source_w,
+            "height": source_w if rotated else source_h,
+            "rotated": rotated,
+            "type": part.get("type", "panel"),
+        }
+
+        for key in feature_keys:
+            if key in part:
+                values = copy_feature_list(part.get(key), source_w, source_h, rotated)
+                if values:
+                    placed[key] = values
+
+        return placed
+
     sorted_parts = sorted(parts, key=lambda p: p["width"] * p["height"], reverse=True)
 
     sheets = []
@@ -969,17 +1190,8 @@ def simple_nesting(parts: List[Dict], sheet_width: int, sheet_height: int) -> Ne
             placed = False
             for sheet in [current_sheet] + sheets:
                 for i, (x, y, sw, sh) in enumerate(sheet["spaces"]):
-                    # Try normal orientation
                     if pw <= sw and ph <= sh:
-                        sheet["parts"].append({
-                            "name": part["name"],
-                            "x": x,
-                            "y": y,
-                            "width": part["width"],
-                            "height": part["height"],
-                            "rotated": False
-                        })
-                        # Split remaining space
+                        sheet["parts"].append(placed_part(part, x, y, rotated=False))
                         sheet["spaces"].pop(i)
                         if sw - pw > 50:
                             sheet["spaces"].append((x + pw, y, sw - pw, ph))
@@ -987,16 +1199,9 @@ def simple_nesting(parts: List[Dict], sheet_width: int, sheet_height: int) -> Ne
                             sheet["spaces"].append((x, y + ph, sw, sh - ph))
                         placed = True
                         break
-                    # Try rotated
+
                     elif ph <= sw and pw <= sh:
-                        sheet["parts"].append({
-                            "name": part["name"],
-                            "x": x,
-                            "y": y,
-                            "width": part["height"],
-                            "height": part["width"],
-                            "rotated": True
-                        })
+                        sheet["parts"].append(placed_part(part, x, y, rotated=True))
                         sheet["spaces"].pop(i)
                         if sw - ph > 50:
                             sheet["spaces"].append((x + ph, y, sw - ph, pw))
@@ -1004,30 +1209,22 @@ def simple_nesting(parts: List[Dict], sheet_width: int, sheet_height: int) -> Ne
                             sheet["spaces"].append((x, y + pw, sw, sh - pw))
                         placed = True
                         break
+
                 if placed:
                     break
 
             if not placed:
-                # Need new sheet
                 if current_sheet["parts"]:
                     sheets.append(current_sheet)
                 current_sheet = {"parts": [], "spaces": [(0, 0, sheet_width, sheet_height)]}
-                # Place on new sheet
-                current_sheet["parts"].append({
-                    "name": part["name"],
-                    "x": 0,
-                    "y": 0,
-                    "width": part["width"],
-                    "height": part["height"],
-                    "rotated": False
-                })
+                current_sheet["parts"].append(placed_part(part, 0, 0, rotated=False))
                 current_sheet["spaces"] = [(pw, 0, sheet_width - pw, ph), (0, ph, sheet_width, sheet_height - ph)]
 
     if current_sheet["parts"]:
         sheets.append(current_sheet)
 
     total_sheet_area = len(sheets) * sheet_width * sheet_height
-    waste = ((total_sheet_area - total_part_area) / total_sheet_area) * 100
+    waste = ((total_sheet_area - total_part_area) / total_sheet_area) * 100 if total_sheet_area else 0
 
     all_parts = []
     for i, sheet in enumerate(sheets):
