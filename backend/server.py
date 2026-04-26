@@ -1156,6 +1156,8 @@ def generate_full_gcode(parts: List[Dict], config: CNCConfig, design_name: str) 
     tab_length = max(bit_size * 3, 18)
     tab_skin = min(3, max(material_thickness * 0.2, 1.5))
     tab_z_depth = max(material_thickness - tab_skin, 0)
+    pocket_stepover = max(bit_size * 0.45, 1)
+    pocket_finish_allowance = max(tool_radius * 0.15, 0.3)
 
     passes = max(1, math.ceil(material_thickness / cut_depth_per_pass))
 
@@ -1307,6 +1309,43 @@ def generate_full_gcode(parts: List[Dict], config: CNCConfig, design_name: str) 
                 })
         return profiles
 
+    def collect_rect_pockets(part, part_x, part_y):
+        pockets = []
+        for key in ("pockets", "rebates", "trays", "pocket_features", "recesses"):
+            items = part.get(key) or []
+            if isinstance(items, dict):
+                items = items.values()
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+
+                feature_type = (item.get("type") or item.get("shape") or "pocket").lower()
+                if feature_type not in ("pocket", "rebate", "tray", "recess", "rect", "rectangle"):
+                    continue
+
+                px = local_number(item, "x", "left", default=0)
+                py = local_number(item, "y", "bottom", "top", default=0)
+                pw = local_number(item, "width", "w", default=0)
+                ph = local_number(item, "height", "h", default=0)
+                depth = local_number(item, "depth", "pocket_depth", "rebate_depth", default=min(6, material_thickness * 0.33))
+
+                if pw <= bit_size or ph <= bit_size or depth <= 0:
+                    continue
+
+                if not is_absolute_feature(item):
+                    px += part_x
+                    py += part_y
+
+                pockets.append({
+                    "name": item.get("name") or item.get("label") or key,
+                    "left": px,
+                    "bottom": py,
+                    "right": px + pw,
+                    "top": py + ph,
+                    "depth": min(depth, material_thickness),
+                })
+        return pockets
+
     lines = [
         "; ========================================",
         "; UltimateDesk - Production G-Code",
@@ -1333,6 +1372,8 @@ def generate_full_gcode(parts: List[Dict], config: CNCConfig, design_name: str) 
         f"; Spindle Rotation: {spindle_rotation}",
         f"; Safe Height: {fmt(safe_height)}mm",
         f"; Lead-in / Lead-out: {fmt(lead_in_length)}mm",
+        f"; Pocket Stepover: {fmt(pocket_stepover)}mm",
+        f"; Pocket Finish Allowance: {fmt(pocket_finish_allowance)}mm",
         f"; Tool Recommendation: feed {tool_recommendation['feed']} mm/min, plunge {tool_recommendation['plunge']} mm/min, rpm {tool_recommendation['rpm']}, max pass {fmt(tool_recommendation['max_pass'])}mm",
         f"; Tool Note: {tool_recommendation['notes']}",
         f"; Cut Strategy: {cut_strategy.upper()}",
@@ -1413,6 +1454,73 @@ def generate_full_gcode(parts: List[Dict], config: CNCConfig, design_name: str) 
 
     add_linear_move_with_optional_tab.current_x = 0
     add_linear_move_with_optional_tab.current_y = 0
+
+    def add_rect_pocket(pocket_name, left, bottom, right, top, pocket_depth):
+        cut_left = left + tool_radius
+        cut_bottom = bottom + tool_radius
+        cut_right = right - tool_radius
+        cut_top = top - tool_radius
+
+        if cut_right <= cut_left or cut_top <= cut_bottom:
+            lines.append(f"; WARNING: skipped pocket {pocket_name} - pocket is smaller than tool diameter")
+            return
+
+        pocket_passes = max(1, math.ceil(pocket_depth / cut_depth_per_pass))
+        start_x = (cut_left + cut_right) / 2
+        start_y = (cut_bottom + cut_top) / 2
+
+        lines.append("; ----------------------------------------")
+        lines.append(f"; POCKET: {pocket_name}")
+        lines.append(f"; Pocket Depth: {fmt(pocket_depth)}mm")
+        lines.append(f"; Pocket Strategy: rectangular offset clearing, centre-out, finish allowance {fmt(pocket_finish_allowance)}mm")
+        lines.append(f"; Pocket Stepover: {fmt(pocket_stepover)}mm")
+        lines.append("; ----------------------------------------")
+
+        max_radius_x = max((cut_right - cut_left) / 2 - pocket_finish_allowance, 0)
+        max_radius_y = max((cut_top - cut_bottom) / 2 - pocket_finish_allowance, 0)
+        loop_count = max(1, math.ceil(max(max_radius_x, max_radius_y) / pocket_stepover))
+
+        for p in range(pocket_passes):
+            depth = min((p + 1) * cut_depth_per_pass, pocket_depth)
+            lines.append("")
+            lines.append(f"; POCKET pass {p + 1}/{pocket_passes} depth {fmt(depth)}mm")
+            lines.append(f"G0 Z{fmt(safe_height)}")
+            lines.append(f"G0 X{fmt(start_x)} Y{fmt(start_y)} ; rapid to pocket centre")
+            lines.append(f"G1 Z-{fmt(depth)} F{plunge_rate} ; pocket plunge")
+
+            for loop_index in range(1, loop_count + 1):
+                rx = min(loop_index * pocket_stepover, max_radius_x)
+                ry = min(loop_index * pocket_stepover, max_radius_y)
+
+                lx = start_x - rx
+                by = start_y - ry
+                rxp = start_x + rx
+                typ = start_y + ry
+
+                if rx <= 0 or ry <= 0:
+                    continue
+
+                lines.append(f"; Pocket clearing loop {loop_index}/{loop_count}")
+                lines.append(f"G1 X{fmt(lx)} Y{fmt(by)} F{feed_rate}")
+                lines.append(f"G1 X{fmt(rxp)} Y{fmt(by)} F{feed_rate}")
+                lines.append(f"G1 X{fmt(rxp)} Y{fmt(typ)} F{feed_rate}")
+                lines.append(f"G1 X{fmt(lx)} Y{fmt(typ)} F{feed_rate}")
+                lines.append(f"G1 X{fmt(lx)} Y{fmt(by)} F{feed_rate}")
+
+            finish_left = cut_left
+            finish_bottom = cut_bottom
+            finish_right = cut_right
+            finish_top = cut_top
+
+            lines.append("; Pocket finish pass")
+            lines.append(f"G1 X{fmt(finish_left)} Y{fmt(finish_bottom)} F{feed_rate}")
+            lines.append(f"G1 X{fmt(finish_right)} Y{fmt(finish_bottom)} F{feed_rate}")
+            lines.append(f"G1 X{fmt(finish_right)} Y{fmt(finish_top)} F{feed_rate}")
+            lines.append(f"G1 X{fmt(finish_left)} Y{fmt(finish_top)} F{feed_rate}")
+            lines.append(f"G1 X{fmt(finish_left)} Y{fmt(finish_bottom)} F{feed_rate}")
+            lines.append(f"G0 Z{fmt(safe_height)} ; retract after pocket pass")
+
+        lines.append("")
 
     def add_rect_profile(profile_name, left, bottom, right, top, cut_class):
         if right <= left or top <= bottom:
@@ -1506,11 +1614,21 @@ def generate_full_gcode(parts: List[Dict], config: CNCConfig, design_name: str) 
         lines.append(f"; Raw Position: X{fmt(part_x)} Y{fmt(part_y)}")
         if part.get("rotated"):
             lines.append("; Note: Part is ROTATED 90 degrees in nesting")
-        lines.append("; Operation order: drilling -> inside profiles -> outside profile")
+        lines.append("; Operation order: drilling -> pocketing -> inside profiles -> outside profile")
         lines.append("; ========================================")
 
         for point in collect_drill_points(part, part_x, part_y):
             add_drill_cycle(point)
+
+        for pocket in collect_rect_pockets(part, part_x, part_y):
+            add_rect_pocket(
+                pocket["name"],
+                pocket["left"],
+                pocket["bottom"],
+                pocket["right"],
+                pocket["top"],
+                pocket["depth"],
+            )
 
         for profile in collect_inside_rect_profiles(part, part_x, part_y):
             add_rect_profile(
