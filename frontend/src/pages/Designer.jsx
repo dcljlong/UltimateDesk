@@ -370,15 +370,15 @@ const Designer = () => {
         {/* Main Canvas Area */}
         <main className="flex-1 flex flex-col overflow-hidden">
           <div
-            className="px-4 py-2 border-b border-[var(--border)] bg-[var(--surface)] flex flex-wrap items-center justify-between gap-2 text-xs"
+            className="px-5 py-3 border-b border-[var(--border)] bg-[var(--surface)] flex flex-wrap items-center justify-between gap-3 text-sm"
             data-testid="design-summary-bar"
           >
-            <div className="flex flex-wrap items-center gap-2 font-mono">
-              <span className="font-bold">{params.width} x {params.depth} x {params.height}mm</span>
+            <div className="flex flex-wrap items-center gap-3 font-mono text-base font-semibold">
+              <span className="font-bold">{params.width} x {params.depth} x {params.height} mm</span>
               <span className="text-[var(--text-secondary)]">{params.material_thickness}mm material</span>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2 text-[var(--text-secondary)]">
+            <div className="flex flex-wrap items-center gap-3 text-[var(--text-secondary)] text-sm">
               {cncOutput?.nesting ? (
                 <>
                   <span>{cncOutput.nesting.sheets_required} sheet{cncOutput.nesting.sheets_required === 1 ? '' : 's'}</span>
