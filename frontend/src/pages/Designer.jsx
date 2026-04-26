@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+﻿import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { 
@@ -31,6 +31,8 @@ import NestingViewer from '../components/NestingViewer';
 import ExportDialog from '../components/ExportDialog';
 import ChatDesigner from '../components/ChatDesigner';
 import BuildViews2D from '../components/BuildViews2D';
+import AssemblyView from '../components/AssemblyView';
+import JoineryView from '../components/JoineryView';
 import axios from 'axios';
 
 const getApiUrl = () => {
@@ -205,7 +207,7 @@ const Designer = () => {
     setExportDialogOpen(true);
   };
 
-  // Live price pill Ã¢â‚¬â€ refreshes when design changes
+  // Live price pill ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â refreshes when design changes
   useEffect(() => {
     const t = setTimeout(async () => {
       try {
@@ -382,9 +384,9 @@ const Designer = () => {
               {cncOutput?.nesting ? (
                 <>
                   <span>{cncOutput.nesting.sheets_required} sheet{cncOutput.nesting.sheets_required === 1 ? '' : 's'}</span>
-                  <span>•</span>
+                  <span>â€¢</span>
                   <span>{cncOutput.nesting.parts.length} parts</span>
-                  <span>•</span>
+                  <span>â€¢</span>
                   <span>{cncOutput.nesting.waste_percentage}% waste</span>
                 </>
               ) : (
@@ -393,14 +395,14 @@ const Designer = () => {
 
               {params.is_oversize && (
                 <>
-                  <span>•</span>
+                  <span>â€¢</span>
                   <span className="font-bold text-amber-400">Oversize split top</span>
                 </>
               )}
 
               {params.requires_centre_support && (
                 <>
-                  <span>•</span>
+                  <span>â€¢</span>
                   <span className="font-bold text-amber-400">Centre support required</span>
                 </>
               )}
@@ -417,7 +419,13 @@ const Designer = () => {
                   <TreeStructure size={16} /> Nesting
                 </TabsTrigger>
                 <TabsTrigger value="buildviews" className="gap-1" data-testid="tab-buildviews">
+                <TabsTrigger value="joinery" className="gap-1">
+                  Joinery
+                </TabsTrigger>
                   <Ruler size={16} /> Build Views
+                </TabsTrigger>
+                <TabsTrigger value="assembly" className="gap-1" data-testid="tab-assembly">
+                  <TreeStructure size={16} /> Assembly
                 </TabsTrigger>
                 <TabsTrigger value="gcode" className="gap-1" data-testid="tab-gcode">
                   <Code size={16} /> Toolpath
@@ -442,6 +450,10 @@ const Designer = () => {
             <TabsContent value="preview" className="flex-1 m-0">
               <DeskPreview3D params={params} />
             </TabsContent>
+
+            <TabsContent value="joinery" className="flex-1 min-h-0 m-0 overflow-auto">
+              <JoineryView params={params} />
+            </TabsContent>
             
             <TabsContent value="nesting" className="flex-1 min-h-0 m-0 overflow-hidden p-4">
               <NestingViewer nestingData={cncOutput?.nesting} cncOutput={cncOutput} />
@@ -449,6 +461,10 @@ const Designer = () => {
             
             <TabsContent value="buildviews" className="flex-1 min-h-0 m-0 overflow-hidden">
               <BuildViews2D key={JSON.stringify(params)} params={params} />
+            </TabsContent>
+
+            <TabsContent value="assembly" className="flex-1 min-h-0 m-0 overflow-hidden">
+              <AssemblyView key={JSON.stringify(params)} params={params} />
             </TabsContent>
 
             <TabsContent value="gcode" className="flex-1 min-h-0 m-0 overflow-y-auto p-4">
@@ -502,4 +518,5 @@ const Designer = () => {
 };
 
 export default Designer;
+
 
