@@ -1169,6 +1169,30 @@ def generate_full_gcode(parts: List[Dict], config: CNCConfig, design_name: str) 
 
     return "\n".join(lines)
 
+
+
+def validate_design(params, parts):
+    warnings = []
+
+    thickness = params.material_thickness
+    width = params.width
+
+    # Edge distance rule
+    min_edge = thickness * 1.5
+    if min_edge < 25:
+        warnings.append(f"Edge distance too small ({min_edge}mm). Increase fixing offset.")
+
+    # Span rule
+    if width > 2400 and not params.requires_centre_support:
+        warnings.append("Desk width exceeds 2400mm without centre support.")
+
+    # Sheet fit check
+    for p in parts:
+        if p.get("width", 0) > 2400 or p.get("height", 0) > 1200:
+            warnings.append(f"Part {p.get('name')} exceeds sheet size.")
+
+    return warnings
+
 def generate_dxf(parts: List[Dict], config: CNCConfig, design_name: str) -> str:
     """Generate DXF file for CAD/CAM import, separated by sheet."""
     sheet_gap = 400
