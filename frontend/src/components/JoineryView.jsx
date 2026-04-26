@@ -30,7 +30,7 @@ const JoineryView = ({ params }) => {
           })}
 
           <text x="300" y="220" textAnchor="middle" fontSize="12">
-            5 x screws | 5mm pilot | 30mm edge offset | even spacing
+            5 x screws | 5mm pilot | 30mm edge offset | {Math.round((300 - 60) / 4)}mm spacing
           </text>
 
           {/* Desktop */}
