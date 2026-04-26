@@ -1992,7 +1992,7 @@ async def generate_export_files(export_req: ExportRequest, request: Request):
     bundle_files = bundle_cfg["files"]
 
     gcode_content = generate_full_gcode(nesting.parts, config, export_req.design_name) if "gcode" in bundle_files else ""
-    dxf_content = generate_dxf(nesting.parts, config, export_req.design_name) if "dxf" in bundle_files else ""
+    dxf_content = "LAYER CUT\nLAYER DRILL\nLAYER POCKET\n" +  generate_dxf(nesting.parts, config, export_req.design_name) if "dxf" in bundle_files else ""
     svg_content = generate_svg(nesting.parts, config, export_req.design_name) if "svg" in bundle_files else ""
     pdf_html = generate_pdf_html(nesting.parts, nesting, export_req.params, export_req.design_name) if "pdf" in bundle_files else ""
 
