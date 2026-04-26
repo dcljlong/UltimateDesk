@@ -1328,7 +1328,7 @@ def generate_pdf_html(parts: List[Dict], nesting: NestingResult, params: DesignP
     </div>
 
     <div class="disclaimer">
-        <strong>âš ï¸ IMPORTANT SAFETY DISCLAIMER</strong><br>
+        <strong>IMPORTANT SAFETY DISCLAIMER</strong><br>
         This cutting sheet is a REFERENCE DOCUMENT. All measurements should be verified before cutting.
         You are responsible for verifying toolpaths in your CAM software. UltimateDesk is not liable for
         machine damage, material waste, or injury from unverified cuts.
@@ -1518,7 +1518,7 @@ def generate_pdf_bytes(parts: List[Dict], nesting: NestingResult, params: Design
 
     for sheet_idx, sheet_parts in sorted(sheets_parts.items()):
         c.showPage()
-        draw_header(f"{design_name} ? Sheet {sheet_idx + 1} of {nesting.sheets_required}")
+        draw_header(f"{design_name} - Sheet {sheet_idx + 1} of {nesting.sheets_required}")
         c.setFont("Helvetica", 9)
         c.setFillColor(colors.black)
         c.drawString(margin, page_height - margin - 10 * mm, "2400mm x 1200mm sheet layout")
@@ -1547,7 +1547,7 @@ def generate_pdf_bytes(parts: List[Dict], nesting: NestingResult, params: Design
             c.drawCentredString(px + pw / 2, py + ph / 2, label[:48])
 
     c.showPage()
-    draw_header(f"{design_name} ? Parts List")
+    draw_header(f"{design_name} - Parts List")
     c.setFont("Helvetica-Bold", 9)
     c.setFillColor(colors.black)
 
@@ -1570,7 +1570,7 @@ def generate_pdf_bytes(parts: List[Dict], nesting: NestingResult, params: Design
         nonlocal y
         if y < 20 * mm:
             c.showPage()
-            draw_header(f"{design_name} ? Parts List")
+            draw_header(f"{design_name} - Parts List")
             y = page_height - margin - 16 * mm
         c.setFillColor(colors.HexColor("#F5F5F5") if bold else colors.white)
         c.setStrokeColor(colors.HexColor("#DDDDDD"))
@@ -1645,7 +1645,7 @@ async def check_export_access(request: Request):
 async def purchase_single_export(request: Request):
     """Create a Stripe checkout for a single export.
     Body: { origin_url, params, bundle, commercial_license, design_name }
-    Price is computed server-side from the pricing engine â€” NEVER trust client price.
+    Price is computed server-side from the pricing engine - NEVER trust client price.
     """
     body = await request.json()
     origin_url = body.get("origin_url", "")
@@ -2010,7 +2010,7 @@ async def list_bundles():
 
 @pricing_router.post("/quote", response_model=QuoteBreakdown)
 async def pricing_quote(body: QuoteRequestBody):
-    """Live quote â€” no auth required. Computes sheets + parts from params then prices."""
+    """Live quote - no auth required. Computes sheets + parts from params then prices."""
     parts = calculate_desk_parts(body.params)
     nesting = simple_nesting(parts, 2400, 1200)
     total_part_qty = sum(p.get("quantity", 1) for p in parts)
@@ -2148,8 +2148,8 @@ def _render_quote_html(doc: Dict[str, Any]) -> str:
   <button class="print-btn" onclick="window.print()">Save as PDF / Print</button>
 
   <div class="footer">
-    Design: {params.get('desk_type', 'custom')} · {params.get('width', 0)} × {params.get('depth', 0)} × {params.get('height', 0)} mm ·
-    {q['sheets_required']} sheet(s) · {q['part_count']} parts.<br>
+    Design: {params.get('desk_type', 'custom')} - {params.get('width', 0)} x {params.get('depth', 0)} x {params.get('height', 0)} mm ·
+    {q['sheets_required']} sheet(s) - {q['part_count']} parts.<br>
     Export files include: {', '.join(q.get('bundle_files', []))}.<br>
     This quote is for pricing guidance and reference file generation only. Verify dimensions, toolpaths, tooling, feeds, origins and hold-down strategy in your CAM software before cutting.
   </div>
@@ -2242,4 +2242,3 @@ async def startup():
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
-
