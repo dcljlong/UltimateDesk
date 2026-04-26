@@ -63,7 +63,7 @@ DEFAULT_BUNDLE = "dxf"
 
 COMMERCIAL_LICENSE_FEE = 29.0
 
-# Indicative material cost — user buys plywood separately at their local merchant.
+# Indicative material cost - user buys plywood separately at their local merchant.
 # NZ average: ~$80 per 18mm 2400x1200mm sheet (use as estimate only).
 MATERIAL_COST_PER_SHEET_NZD = 80.0
 
@@ -101,7 +101,7 @@ class QuoteRequest(BaseModel):
     params: Dict[str, Any]
     bundle: str = DEFAULT_BUNDLE
     commercial_license: bool = False
-    # Optional pre-computed nesting summary — if provided we use it,
+    # Optional pre-computed nesting summary - if provided we use it,
     # otherwise the API layer computes it from params.
     sheets_required: Optional[int] = None
     part_count: Optional[int] = None
@@ -125,7 +125,7 @@ def calculate_quote(
     bundle: str = DEFAULT_BUNDLE,
     commercial_license: bool = False,
 ) -> QuoteBreakdown:
-    """Pure pricing function — no I/O, fully testable."""
+    """Pure pricing function - no I/O, fully testable."""
     if bundle not in BUNDLE_OPTIONS:
         bundle = DEFAULT_BUNDLE
     bundle_cfg = BUNDLE_OPTIONS[bundle]
@@ -138,7 +138,7 @@ def calculate_quote(
     # Sheets
     sheets_fee = SHEET_FEE * max(1, sheets_required)
     line_items.append(LineItem(
-        label=f"Material sheets ({sheets_required} × 2400×1200mm)",
+        label=f"Material sheets ({sheets_required} x 2400x1200mm)",
         amount=round(sheets_fee, 2),
         detail=f"${SHEET_FEE:.2f} per sheet",
     ))
@@ -148,9 +148,9 @@ def calculate_quote(
     parts_fee = round(extra_parts * PART_FEE_OVER_THRESHOLD, 2)
     if parts_fee > 0:
         line_items.append(LineItem(
-            label=f"Part complexity ({extra_parts} parts over base {PART_THRESHOLD})",
+            label=f"Part complexity ({part_count} total parts, {extra_parts} over base allowance)",
             amount=parts_fee,
-            detail=f"${PART_FEE_OVER_THRESHOLD:.2f} per extra part",
+            detail=f"${PART_FEE_OVER_THRESHOLD:.2f} per part over first {PART_THRESHOLD}",
         ))
 
     # Joint type
@@ -184,9 +184,9 @@ def calculate_quote(
     if multiplier != 1.0:
         diff = round(bundle_total_raw - subtotal, 2)
         line_items.append(LineItem(
-            label=f"Bundle upgrade — {bundle_cfg['label']}",
+            label=f"Bundle upgrade - {bundle_cfg['label']}",
             amount=diff,
-            detail=f"×{multiplier:.2f} on subtotal",
+            detail=f"x{multiplier:.2f} on subtotal",
         ))
 
     # Commercial license
@@ -227,8 +227,8 @@ def calculate_quote(
         material_cost_estimate=round(MATERIAL_COST_PER_SHEET_NZD * max(1, sheets_required), 2),
         material_note=(
             f"Material ~${int(MATERIAL_COST_PER_SHEET_NZD * max(1, sheets_required))} NZD "
-            f"({max(1, sheets_required)} × 18mm plywood sheet at ~${int(MATERIAL_COST_PER_SHEET_NZD)}/sheet) "
-            "— you buy this separately at your local merchant."
+            f"({max(1, sheets_required)} x 18mm plywood sheet at ~${int(MATERIAL_COST_PER_SHEET_NZD)}/sheet) "
+            "- you buy this separately at your local merchant."
         ),
     )
 
@@ -262,7 +262,7 @@ def _build_headline(
     else:
         parts.append("premium features")
 
-    return f"{', '.join(parts)} — ${int(total)} NZD ({bundle_cfg['label']})"
+    return f"{', '.join(parts)} - ${int(total)} NZD ({bundle_cfg['label']})"
 
 
 def get_bundle_catalog() -> List[Dict[str, Any]]:
