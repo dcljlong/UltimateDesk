@@ -1237,6 +1237,12 @@ def generate_full_gcode(parts: List[Dict], config: CNCConfig, design_name: str) 
             f"Unknown cut strategy '{cut_strategy}'. Default geometry assumes climb strategy."
         )
 
+    def supports_canned_drill_cycle():
+        post_key = machine_post.lower().strip()
+        return post_key in ("mach3", "mach4", "linuxcnc", "fanuc_metric", "haas_metric")
+
+    drill_strategy = "G81 canned drill cycle" if supports_canned_drill_cycle() else "explicit plunge/retract drill moves"
+
     def local_number(source, *names, default=0):
         for name in names:
             if isinstance(source, dict) and source.get(name) is not None:
@@ -1377,6 +1383,7 @@ def generate_full_gcode(parts: List[Dict], config: CNCConfig, design_name: str) 
         f"; Tool Recommendation: feed {tool_recommendation['feed']} mm/min, plunge {tool_recommendation['plunge']} mm/min, rpm {tool_recommendation['rpm']}, max pass {fmt(tool_recommendation['max_pass'])}mm",
         f"; Tool Note: {tool_recommendation['notes']}",
         f"; Cut Strategy: {cut_strategy.upper()}",
+        f"; Drill Strategy: {drill_strategy}",
         "; Cut Classification: drill operations first, inside profiles before outside profiles.",
         "; Offset Strategy: generated XY geometry is tool-centreline offset; G41/G42 not used.",
         "; Outside profiles: offset outward by tool radius.",
@@ -1405,7 +1412,8 @@ def generate_full_gcode(parts: List[Dict], config: CNCConfig, design_name: str) 
         lines.append("")
 
     if machine_post == "generic_grbl_metric":
-        lines.append("; POST NOTE: Generic GRBL-style metric output. Confirm controller dialect before machine run.")
+        lines.append("; POST NOTE: Generic GRBL-style metric output. Canned drill cycles are not emitted for this post.")
+        lines.append("; POST NOTE: Drilling uses explicit Z plunge/retract moves for broader GRBL compatibility.")
         lines.append("")
     elif machine_post.lower() in ("mach3", "mach4"):
         lines.append("; POST NOTE: Mach-style controller selected. Verify arc, drilling cycle, and safe-Z behaviour.")
@@ -1415,13 +1423,23 @@ def generate_full_gcode(parts: List[Dict], config: CNCConfig, design_name: str) 
         lines.append("")
 
     def add_drill_cycle(point):
+        drill_depth = min(float(point.get("depth", material_thickness) or material_thickness), material_thickness)
+
         lines.append(f"; DRILL: {point['name']} diameter {fmt(point['diameter'])}mm")
         if point["diameter"] > bit_size * 1.25:
             lines.append(f"; WARNING: drill diameter {fmt(point['diameter'])}mm exceeds tool size {fmt(bit_size)}mm - verify boring strategy")
+
         lines.append(f"G0 Z{fmt(safe_height)}")
         lines.append(f"G0 X{fmt(point['x'])} Y{fmt(point['y'])}")
-        lines.append(f"G81 Z-{fmt(point['depth'])} R{fmt(retract_height)} F{plunge_rate} ; drill cycle")
-        lines.append("G80 ; cancel drill cycle")
+
+        if supports_canned_drill_cycle():
+            lines.append(f"G81 Z-{fmt(drill_depth)} R{fmt(retract_height)} F{plunge_rate} ; canned drill cycle")
+            lines.append("G80 ; cancel drill cycle")
+        else:
+            lines.append(f"G1 Z-{fmt(drill_depth)} F{plunge_rate} ; explicit drill plunge")
+            lines.append(f"G0 Z{fmt(retract_height)} ; explicit drill retract")
+            lines.append(f"G0 Z{fmt(safe_height)} ; safe drill clearance")
+
         lines.append("")
 
     def add_linear_move_with_optional_tab(end_x, end_y, depth, use_tab=False):
