@@ -1080,7 +1080,7 @@ async def generate_cnc(params: DesignParams):
     # Material cost (NZ plywood ~$80/sheet for 18mm)
     material_cost = nesting.sheets_required * 80.0
 
-    gcode = generate_gcode_preview(nesting.parts, config)
+    gcode = "(BEGIN CNC PROGRAM)\nG21\nG90\nG17\n" +  generate_gcode_preview(nesting.parts, config)
 
     return CNCOutput(
         nesting=nesting,
