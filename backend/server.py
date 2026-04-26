@@ -868,6 +868,27 @@ def calculate_desk_parts(params: DesignParams) -> List[Dict[str, Any]]:
 
     return parts
 
+
+
+def generate_joinery_holes(parts, params):
+    width = params.width
+    holes = []
+
+    rail_fixing_count = 7 if width >= 2400 else 5 if width >= 1800 else 4
+    edge_offset = 30
+    span = width - 120
+    spacing = span / max(1, rail_fixing_count - 1)
+
+    for i in range(rail_fixing_count):
+        x = edge_offset + i * spacing
+        holes.append({
+            "x": round(x, 2),
+            "y": 20,
+            "diameter": 5
+        })
+
+    return holes
+
 def simple_nesting(parts: List[Dict], sheet_width: int, sheet_height: int) -> NestingResult:
     """Simple bin packing algorithm for sheet nesting"""
     # Add margin for cuts
