@@ -1255,6 +1255,31 @@ def get_joinery_rules(connection_type, params, part_width):
         "count": 4
     }
 
+
+
+def transform_to_global(part, x, y):
+    px = part.get("x", 0)
+    py = part.get("y", 0)
+    rotation = part.get("rotation", 0)
+
+    # 0 = normal
+    if rotation == 0:
+        return px + x, py + y
+
+    # 90 deg
+    if rotation == 90:
+        return px - y, py + x
+
+    # 180 deg
+    if rotation == 180:
+        return px - x, py - y
+
+    # 270 deg
+    if rotation == 270:
+        return px + y, py - x
+
+    return px + x, py + y
+
 def generate_connection_holes(connections, params):
     holes = []
 
@@ -1285,11 +1310,13 @@ def generate_connection_holes(connections, params):
             else:
                 y = 20
 
+            gx, gy = transform_to_global(conn.part_a, x, y)
+
             holes.append({
                 "part": conn.part_a.get("name"),
                 "connected_to": conn.part_b.get("name"),
-                "x": round(x, 2),
-                "y": round(y, 2),
+                "x": round(gx, 2),
+                "y": round(gy, 2),
                 "diameter": diameter,
                 "type": conn.connection_type
             })
