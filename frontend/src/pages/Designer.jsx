@@ -369,6 +369,44 @@ const Designer = () => {
 
         {/* Main Canvas Area */}
         <main className="flex-1 flex flex-col overflow-hidden">
+          <div
+            className="px-4 py-2 border-b border-[var(--border)] bg-[var(--surface)] flex flex-wrap items-center justify-between gap-2 text-xs"
+            data-testid="design-summary-bar"
+          >
+            <div className="flex flex-wrap items-center gap-2 font-mono">
+              <span className="font-bold">{params.width} x {params.depth} x {params.height}mm</span>
+              <span className="text-[var(--text-secondary)]">{params.material_thickness}mm material</span>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 text-[var(--text-secondary)]">
+              {cncOutput?.nesting ? (
+                <>
+                  <span>{cncOutput.nesting.sheets_required} sheet{cncOutput.nesting.sheets_required === 1 ? '' : 's'}</span>
+                  <span>•</span>
+                  <span>{cncOutput.nesting.parts.length} parts</span>
+                  <span>•</span>
+                  <span>{cncOutput.nesting.waste_percentage}% waste</span>
+                </>
+              ) : (
+                <span>Layout updating...</span>
+              )}
+
+              {params.is_oversize && (
+                <>
+                  <span>•</span>
+                  <span className="font-bold text-amber-400">Oversize split top</span>
+                </>
+              )}
+
+              {params.requires_centre_support && (
+                <>
+                  <span>•</span>
+                  <span className="font-bold text-amber-400">Centre support required</span>
+                </>
+              )}
+            </div>
+          </div>
+
           <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
             <div className="flex items-center justify-between px-4 py-2 border-b border-[var(--border)]">
               <TabsList>
