@@ -1123,111 +1123,315 @@ class ExportResponse(BaseModel):
 # ============== FILE GENERATION FUNCTIONS ==============
 
 def generate_full_gcode(parts: List[Dict], config: CNCConfig, design_name: str) -> str:
-    """Generate complete production G-code for all parts"""
+    """Generate complete production G-code with explicit cut classification, lead-ins, and multi-pass profiles."""
+    bit_size = float(getattr(config, "bit_size", 6) or 6)
+    tool_radius = bit_size / 2
+    material_thickness = float(getattr(config, "material_thickness", 18) or 18)
+    cut_depth_per_pass = float(getattr(config, "cut_depth_per_pass", 3) or 3)
+
+    feed_rate = int(getattr(config, "feed_rate", 0) or (1500 if bit_size <= 6 else 1200))
+    plunge_rate = int(getattr(config, "plunge_rate", 0) or 300)
+    spindle_speed = int(getattr(config, "spindle_speed", 0) or 18000)
+
+    safe_height = float(getattr(config, "safe_height", 10) or 10)
+    clearance_height = max(safe_height, 25)
+    retract_height = 3
+    lead_in_length = max(bit_size * 1.5, 8)
+    lead_out_length = lead_in_length
+    tab_length = max(bit_size * 3, 18)
+    tab_skin = min(3, max(material_thickness * 0.2, 1.5))
+    tab_z_depth = max(material_thickness - tab_skin, 0)
+
+    passes = max(1, math.ceil(material_thickness / cut_depth_per_pass))
+
+    def fmt(value):
+        value = round(float(value), 3)
+        return f"{value:.3f}".rstrip("0").rstrip(".")
+
+    def local_number(source, *names, default=0):
+        for name in names:
+            if isinstance(source, dict) and source.get(name) is not None:
+                try:
+                    return float(source.get(name))
+                except (TypeError, ValueError):
+                    return float(default)
+        return float(default)
+
+    def is_absolute_feature(feature):
+        return bool(feature.get("absolute") or feature.get("is_absolute") or feature.get("global"))
+
+    def collect_drill_points(part, part_x, part_y):
+        drill_points = []
+        for key in ("drill_points", "holes", "joinery_holes", "connector_holes"):
+            items = part.get(key) or []
+            if isinstance(items, dict):
+                items = items.values()
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                if item.get("type") in ("slot", "pocket", "rebate", "cutout"):
+                    continue
+                hx = local_number(item, "x", "center_x", "cx", default=0)
+                hy = local_number(item, "y", "center_y", "cy", default=0)
+                if not is_absolute_feature(item):
+                    hx += part_x
+                    hy += part_y
+                diameter = local_number(item, "diameter", "dia", "d", default=bit_size)
+                drill_points.append({
+                    "name": item.get("name") or item.get("label") or key,
+                    "x": hx,
+                    "y": hy,
+                    "diameter": diameter,
+                    "depth": local_number(item, "depth", default=material_thickness),
+                })
+        return drill_points
+
+    def collect_inside_rect_profiles(part, part_x, part_y):
+        profiles = []
+        for key in ("inside_profiles", "internal_profiles", "cutouts", "internal_cutouts"):
+            items = part.get(key) or []
+            if isinstance(items, dict):
+                items = items.values()
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                shape = (item.get("shape") or item.get("type") or "rectangle").lower()
+                if shape not in ("rect", "rectangle", "cutout", "inside_profile", "internal_profile"):
+                    continue
+
+                ix = local_number(item, "x", "left", default=0)
+                iy = local_number(item, "y", "bottom", "top", default=0)
+                iw = local_number(item, "width", "w", default=0)
+                ih = local_number(item, "height", "h", default=0)
+
+                if iw <= 0 or ih <= 0:
+                    continue
+
+                if not is_absolute_feature(item):
+                    ix += part_x
+                    iy += part_y
+
+                profiles.append({
+                    "name": item.get("name") or item.get("label") or key,
+                    "left": ix,
+                    "bottom": iy,
+                    "right": ix + iw,
+                    "top": iy + ih,
+                })
+        return profiles
+
     lines = [
-        f"; ========================================",
-        f"; UltimateDesk - Production G-Code",
+        "; ========================================",
+        "; UltimateDesk - Production G-Code",
         f"; Design: {design_name}",
         f"; Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}",
-        f"; ========================================",
-        f";",
-        f"; IMPORTANT SAFETY DISCLAIMER:",
-        f"; This G-code is a REFERENCE FILE. You MUST verify all toolpaths",
-        f"; in your CAM software before cutting. UltimateDesk is not responsible",
-        f"; for machine damage, material waste, or injury from unverified toolpaths.",
-        f";",
-        f"; Material: 18mm NZ Plywood (2400x1200mm sheets)",
-        f"; Bit Size: {config.bit_size}mm end mill",
-        f"; Cut Depth Per Pass: {config.cut_depth_per_pass}mm",
-        f"; Feed Rate: {1500 if config.bit_size <= 6 else 1200} mm/min",
-        f"; Plunge Rate: 300 mm/min",
-        f"; Safe Height: 10mm",
-        f"; Tool Compensation: verify outside profile offset = {config.bit_size / 2}mm in CAM",
-        f"; Kerf Allowance: tool diameter {config.bit_size}mm, radius {config.bit_size / 2}mm",
-        f";",
-        f"; Total Parts: {len(parts)}",
-        f"; ========================================",
+        "; ========================================",
+        ";",
+        "; IMPORTANT SAFETY DISCLAIMER:",
+        "; This G-code must be verified in machine-specific CAM/control software before cutting.",
+        "; Confirm work origin, stock margin, clamps, vacuum hold-down, tool length, and post compatibility.",
+        ";",
+        f"; Material Thickness: {fmt(material_thickness)}mm",
+        f"; Bit Size: {fmt(bit_size)}mm end mill",
+        f"; Tool Radius / Kerf Offset: {fmt(tool_radius)}mm",
+        f"; Cut Depth Per Pass: {fmt(cut_depth_per_pass)}mm",
+        f"; Calculated Passes: {passes}",
+        f"; Feed Rate: {feed_rate} mm/min",
+        f"; Plunge Rate: {plunge_rate} mm/min",
+        f"; Spindle Speed: {spindle_speed} RPM",
+        f"; Safe Height: {fmt(safe_height)}mm",
+        f"; Lead-in / Lead-out: {fmt(lead_in_length)}mm",
+        "; Cut Classification: drill operations first, inside profiles before outside profiles.",
+        "; Offset Strategy: generated XY geometry is tool-centreline offset; G41/G42 not used.",
+        "; Outside profiles: offset outward by tool radius.",
+        "; Inside profiles: offset inward by tool radius.",
+        "; Toolpath Direction: outside profiles clockwise, inside profiles counter-clockwise.",
+        "; ========================================",
         "",
         "G21 ; Set units to millimeters",
         "G90 ; Absolute positioning",
         "G17 ; XY plane selection",
         "G54 ; Work coordinate system",
-        "",
-        "M3 S18000 ; Spindle on at 18000 RPM",
+        "G40 ; Cancel cutter compensation",
+        "G49 ; Cancel tool length compensation",
+        "G80 ; Cancel canned cycles",
+        f"M3 S{spindle_speed} ; Spindle on",
         "G4 P3 ; Dwell 3 seconds for spindle to reach speed",
-        ""
+        f"G0 Z{fmt(clearance_height)} ; Initial safe retract",
+        "",
     ]
 
-    feed_rate = 1500 if config.bit_size <= 6 else 1200
-    plunge_rate = 300
-    safe_height = 10
-    profile_offset = config.bit_size / 2
+    def add_drill_cycle(point):
+        lines.append(f"; DRILL: {point['name']} diameter {fmt(point['diameter'])}mm")
+        if point["diameter"] > bit_size * 1.25:
+            lines.append(f"; WARNING: drill diameter {fmt(point['diameter'])}mm exceeds tool size {fmt(bit_size)}mm - verify boring strategy")
+        lines.append(f"G0 Z{fmt(safe_height)}")
+        lines.append(f"G0 X{fmt(point['x'])} Y{fmt(point['y'])}")
+        lines.append(f"G81 Z-{fmt(point['depth'])} R{fmt(retract_height)} F{plunge_rate} ; drill cycle")
+        lines.append("G80 ; cancel drill cycle")
+        lines.append("")
+
+    def add_linear_move_with_optional_tab(end_x, end_y, depth, use_tab=False):
+        start_x = add_linear_move_with_optional_tab.current_x
+        start_y = add_linear_move_with_optional_tab.current_y
+        dx = end_x - start_x
+        dy = end_y - start_y
+        length = math.hypot(dx, dy)
+
+        if use_tab and length >= max(180, tab_length * 4) and depth >= material_thickness:
+            ux = dx / length
+            uy = dy / length
+            mid_x = start_x + dx * 0.5
+            mid_y = start_y + dy * 0.5
+            pre_x = mid_x - ux * (tab_length / 2)
+            pre_y = mid_y - uy * (tab_length / 2)
+            post_x = mid_x + ux * (tab_length / 2)
+            post_y = mid_y + uy * (tab_length / 2)
+
+            lines.append(f"G1 X{fmt(pre_x)} Y{fmt(pre_y)} F{feed_rate}")
+            lines.append(f"G1 Z-{fmt(tab_z_depth)} F{plunge_rate} ; holding tab lift leaves {fmt(tab_skin)}mm skin")
+            lines.append(f"G1 X{fmt(post_x)} Y{fmt(post_y)} F{feed_rate} ; cross holding tab")
+            lines.append(f"G1 Z-{fmt(depth)} F{plunge_rate} ; resume profile depth")
+            lines.append(f"G1 X{fmt(end_x)} Y{fmt(end_y)} F{feed_rate}")
+        else:
+            lines.append(f"G1 X{fmt(end_x)} Y{fmt(end_y)} F{feed_rate}")
+
+        add_linear_move_with_optional_tab.current_x = end_x
+        add_linear_move_with_optional_tab.current_y = end_y
+
+    add_linear_move_with_optional_tab.current_x = 0
+    add_linear_move_with_optional_tab.current_y = 0
+
+    def add_rect_profile(profile_name, left, bottom, right, top, cut_class):
+        if right <= left or top <= bottom:
+            lines.append(f"; WARNING: skipped invalid profile {profile_name}")
+            return
+
+        if cut_class == "OUTSIDE_PROFILE":
+            offset_left = left - tool_radius
+            offset_bottom = bottom - tool_radius
+            offset_right = right + tool_radius
+            offset_top = top + tool_radius
+            points = [
+                (offset_left, offset_bottom),
+                (offset_left, offset_top),
+                (offset_right, offset_top),
+                (offset_right, offset_bottom),
+                (offset_left, offset_bottom),
+            ]
+            lead_start = (points[0][0] - lead_in_length, points[0][1])
+            lead_out = (points[-1][0] - lead_out_length, points[-1][1])
+            direction = "CLOCKWISE"
+            tab_edges = {1, 3}
+        else:
+            offset_left = left + tool_radius
+            offset_bottom = bottom + tool_radius
+            offset_right = right - tool_radius
+            offset_top = top - tool_radius
+            if offset_right <= offset_left or offset_top <= offset_bottom:
+                lines.append(f"; WARNING: skipped inside profile {profile_name} - smaller than tool diameter")
+                return
+            inside_lead = min(lead_in_length, max((offset_right - offset_left) * 0.25, 1), max((offset_top - offset_bottom) * 0.25, 1))
+            points = [
+                (offset_left, offset_bottom),
+                (offset_right, offset_bottom),
+                (offset_right, offset_top),
+                (offset_left, offset_top),
+                (offset_left, offset_bottom),
+            ]
+            lead_start = (points[0][0] + inside_lead, points[0][1] + inside_lead)
+            lead_out = lead_start
+            direction = "COUNTER-CLOCKWISE"
+            tab_edges = set()
+
+        lines.append(f"; ----------------------------------------")
+        lines.append(f"; {cut_class}: {profile_name}")
+        lines.append(f"; Direction: {direction}")
+        lines.append(f"; Offset Applied: {fmt(tool_radius)}mm")
+        lines.append(f"; Lead Start: X{fmt(lead_start[0])} Y{fmt(lead_start[1])}")
+        lines.append(f"; Profile Start: X{fmt(points[0][0])} Y{fmt(points[0][1])}")
+        if min(p[0] for p in points) < 0 or min(p[1] for p in points) < 0:
+            lines.append("; WARNING: offset toolpath goes below X0/Y0. Add nesting margin or reset work origin before cutting.")
+        lines.append(f"; ----------------------------------------")
+
+        for p in range(passes):
+            depth = min((p + 1) * cut_depth_per_pass, material_thickness)
+            is_final_pass = p == passes - 1
+
+            lines.append("")
+            lines.append(f"; {cut_class} pass {p + 1}/{passes} depth {fmt(depth)}mm")
+            lines.append(f"G0 Z{fmt(safe_height)}")
+            lines.append(f"G0 X{fmt(lead_start[0])} Y{fmt(lead_start[1])} ; rapid to lead-in start")
+            lines.append(f"G1 Z-{fmt(depth)} F{plunge_rate} ; plunge")
+            lines.append(f"G1 X{fmt(points[0][0])} Y{fmt(points[0][1])} F{feed_rate} ; lead-in")
+
+            add_linear_move_with_optional_tab.current_x = points[0][0]
+            add_linear_move_with_optional_tab.current_y = points[0][1]
+
+            for edge_index, point in enumerate(points[1:], start=1):
+                add_linear_move_with_optional_tab(
+                    point[0],
+                    point[1],
+                    depth,
+                    use_tab=(cut_class == "OUTSIDE_PROFILE" and is_final_pass and edge_index in tab_edges),
+                )
+
+            lines.append(f"G1 X{fmt(lead_out[0])} Y{fmt(lead_out[1])} F{feed_rate} ; lead-out")
+            lines.append(f"G0 Z{fmt(safe_height)} ; retract after pass")
+
+        lines.append("")
 
     for i, part in enumerate(parts):
-        x, y = part.get('x', 0), part.get('y', 0)
-        w, h = part['width'], part['height']
+        part_x = float(part.get("x", 0) or 0)
+        part_y = float(part.get("y", 0) or 0)
+        width = float(part["width"])
+        height = float(part["height"])
+        part_name = part.get("name") or f"Part {i + 1}"
 
-        lines.append(f"; ----------------------------------------")
-        lines.append(f"; Part {i+1}: {part['name']}")
-        lines.append(f"; Dimensions: {w}mm x {h}mm")
-        lines.append(f"; Required outside profile offset: {profile_offset}mm")
-        lines.append(f"; Position: X{x} Y{y}")
-        if part.get('rotated'):
-            lines.append(f"; Note: Part is ROTATED 90 degrees")
-        lines.append(f"; ----------------------------------------")
+        lines.append("; ========================================")
+        lines.append(f"; PART {i + 1}: {part_name}")
+        lines.append(f"; Raw Size: {fmt(width)}mm x {fmt(height)}mm")
+        lines.append(f"; Raw Position: X{fmt(part_x)} Y{fmt(part_y)}")
+        if part.get("rotated"):
+            lines.append("; Note: Part is ROTATED 90 degrees in nesting")
+        lines.append("; Operation order: drilling -> inside profiles -> outside profile")
+        lines.append("; ========================================")
 
-        lines.append(f"G0 Z{safe_height} ; Safe height")
-        lines.append(f"G0 X{x} Y{y} ; Rapid to start position")
+        for point in collect_drill_points(part, part_x, part_y):
+            add_drill_cycle(point)
 
-        passes = math.ceil(config.material_thickness / config.cut_depth_per_pass)
-        for p in range(passes):
-            depth = min((p + 1) * config.cut_depth_per_pass, config.material_thickness)
-            lines.append(f"")
-            lines.append(f"; Pass {p+1}/{passes} - Depth: {depth}mm")
-            lines.append(f"G1 Z-{depth} F{plunge_rate}")
-            lines.append(f"G1 X{x + w} F{feed_rate}")
-            lines.append(f"G1 Y{y + h}")
-            lines.append(f"G1 X{x}")
-            lines.append(f"G1 Y{y}")
+        for profile in collect_inside_rect_profiles(part, part_x, part_y):
+            add_rect_profile(
+                profile["name"],
+                profile["left"],
+                profile["bottom"],
+                profile["right"],
+                profile["top"],
+                "INSIDE_PROFILE",
+            )
 
-        lines.append(f"G0 Z{safe_height} ; Retract")
-        lines.append("")
+        add_rect_profile(
+            part_name,
+            part_x,
+            part_y,
+            part_x + width,
+            part_y + height,
+            "OUTSIDE_PROFILE",
+        )
 
     lines.extend([
         "; ========================================",
         "; Program End",
         "; ========================================",
-        "G0 Z25 ; Final retract to safe height",
+        f"G0 Z{fmt(clearance_height)} ; Final retract",
         "M5 ; Spindle off",
-        "G0 X0 Y0 ; Return to machine origin",
+        "G0 X0 Y0 ; Return to work origin",
         "M30 ; Program end",
         "",
-        "; Thank you for using UltimateDesk!",
-        "; Questions? support@ultimatedesk.co.nz"
+        "; End of UltimateDesk G-code",
     ])
 
-    gcode = "\\n".join(lines)
-
-    # ----------------------------
-    # CUT ORDER: drill moves before cut moves
-    # ----------------------------
-    gcode_lines = gcode.split("\\n")
-    drill_lines = [line for line in gcode_lines if "G81" in line]
-    cut_lines = [line for line in gcode_lines if line.startswith("G1 ")]
-    other_lines = [line for line in gcode_lines if line not in drill_lines and line not in cut_lines]
-    ordered_lines = other_lines + drill_lines + cut_lines
-
-    # ----------------------------
-    # BASIC TAB STRATEGY: add small Z lift on profile moves
-    # ----------------------------
-    tabbed_lines = []
-    for line in ordered_lines:
-        tabbed_lines.append(line)
-        if line.startswith("G1 X"):
-            tabbed_lines.append("G1 Z-10 ; holding tab lift")
-            tabbed_lines.append("G1 Z-18 ; resume full depth")
-
-    return "\\n".join(tabbed_lines)
+    return "\n".join(lines)
 
 
 
