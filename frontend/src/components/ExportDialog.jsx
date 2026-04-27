@@ -339,7 +339,10 @@ const ExportDialog = ({ isOpen, onClose, params, designName }) => {
   );
     const b = bundles.find((x) => x.key === bundle);
     return b?.files || ['dxf'];
-  }, [bundles, bundle]);
+  }, [bundles, bundle,
+    cncSafetyConfirmed.reviewedDrawings,
+    cncSafetyConfirmed.checkedMachineSettings,
+    cncSafetyConfirmed.willVerifyInCam,]);
 
   // ---- Unauthenticated state ----
   if (!isAuthenticated) {
