@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from './components/ui/sonner';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -40,6 +40,7 @@ function AppRoutes() {
       <Route path="/designer" element={<Designer />} />
       <Route path="/pricing" element={<Pricing />} />
       <Route path="/payment/success" element={<PaymentSuccess />} />
+      <Route path="/export/success" element={<PaymentSuccess />} />
       <Route path="/quote/:slug" element={<SharedQuote />} />
       <Route 
         path="/library" 

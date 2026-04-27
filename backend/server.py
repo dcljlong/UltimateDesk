@@ -4133,6 +4133,44 @@ async def generate_review_drawings_pdf(export_req: ExportRequest):
 
 exports_router = APIRouter(prefix="/exports", tags=["Pro Exports"])
 
+
+@payments_router.get("/status/{session_id}")
+async def get_payment_status(session_id: str):
+    """Return checkout/payment status for the frontend success page."""
+    transaction = await db.payment_transactions.find_one(
+        {"session_id": session_id},
+        projection={"_id": 0}
+    )
+
+    if not transaction:
+        return {
+            "session_id": session_id,
+            "status": "pending",
+            "payment_status": "pending",
+            "message": "Payment confirmation is still pending.",
+        }
+
+    status = transaction.get("status", "pending")
+    payment_status = transaction.get("payment_status", "pending")
+
+    response = {
+        "session_id": session_id,
+        "status": status,
+        "payment_status": payment_status,
+        "product": transaction.get("product"),
+        "bundle": transaction.get("bundle"),
+        "amount": transaction.get("amount"),
+        "currency": transaction.get("currency", "nzd"),
+        "message": "Payment status found.",
+    }
+
+    completed_at = transaction.get("completed_at")
+    if completed_at:
+        response["completed_at"] = completed_at.isoformat() if hasattr(completed_at, "isoformat") else str(completed_at)
+
+    return response
+
+
 @exports_router.post("/check-access")
 async def check_export_access(request: Request):
     """Check if user has Pro access or unused export credits."""
@@ -4220,7 +4258,7 @@ async def purchase_single_export(request: Request):
     webhook_url = f"{host_url}/api/webhook/stripe"
     stripe_checkout = StripeCheckout(api_key=api_key, webhook_url=webhook_url)
 
-    success_url = f"{origin_url}/export/success?session_id={{CHECKOUT_SESSION_ID}}&type=single"
+    success_url = f"{origin_url}/payment/success?session_id={{CHECKOUT_SESSION_ID}}&type=single"
     cancel_url = f"{origin_url}/designer"
 
     checkout_request = CheckoutSessionRequest(
@@ -4287,7 +4325,7 @@ async def purchase_pro_subscription(request: Request):
 
     stripe_checkout = StripeCheckout(api_key=api_key, webhook_url=webhook_url)
 
-    success_url = f"{origin_url}/export/success?session_id={{CHECKOUT_SESSION_ID}}&type=pro"
+    success_url = f"{origin_url}/payment/success?session_id={{CHECKOUT_SESSION_ID}}&type=pro"
     cancel_url = f"{origin_url}/pricing"
 
     checkout_request = CheckoutSessionRequest(
