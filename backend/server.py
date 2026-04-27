@@ -3607,6 +3607,208 @@ def generate_review_drawing_pdf_bytes(params: DesignParams, design_name: str = "
                 col = 0
                 y -= label_h + gap
 
+    def draw_exploded_assembly_page():
+        c.showPage()
+        draw_header(f"{design_name} - Exploded Assembly View", "Manufacturing Instructions")
+        draw_note_box(page_height - margin - 18 * mm, "Exploded view shows assembly relationship only. CNC geometry remains controlled by DXF/NC exports.")
+
+        left = margin + 10 * mm
+        bottom = margin + 24 * mm
+        area_w = page_width - 2 * margin - 20 * mm
+        area_h = page_height - 2 * margin - 86 * mm
+
+        cx = left + area_w / 2
+        base_y = bottom + 20 * mm
+
+        desk_w = min(area_w * 0.72, 190 * mm)
+        top_h = 9 * mm
+        rail_h = 12 * mm
+        leg_w = 13 * mm
+        leg_h = 52 * mm
+
+        def label(text, x, y, size=7, bold=False):
+            c.setFillColor(colors.black)
+            c.setFont("Helvetica-Bold" if bold else "Helvetica", size)
+            c.drawCentredString(x, y, text[:62])
+
+        def arrow(x1, y1, x2, y2, text=""):
+            c.setStrokeColor(colors.HexColor("#666666"))
+            c.setFillColor(colors.HexColor("#666666"))
+            c.setLineWidth(0.8)
+            c.line(x1, y1, x2, y2)
+            c.line(x2, y2, x2 - 2.2 * mm, y2 + 1.6 * mm)
+            c.line(x2, y2, x2 + 2.2 * mm, y2 + 1.6 * mm)
+            if text:
+                c.setFont("Helvetica", 6.5)
+                c.drawCentredString((x1 + x2) / 2, (y1 + y2) / 2 + 2 * mm, text[:32])
+
+        def part_box(x, y, w, h, text, fill="#F8F8F8", stroke="#333333", dashed=False):
+            c.setFillColor(colors.HexColor(fill))
+            c.setStrokeColor(colors.HexColor(stroke))
+            c.setLineWidth(1)
+            if dashed:
+                c.setDash(2, 2)
+            c.roundRect(x, y, w, h, 2 * mm, fill=1, stroke=1)
+            c.setDash()
+            label(text, x + w / 2, y + h / 2 - 2, size=7, bold=True)
+
+        desktop_y = base_y + 82 * mm
+        rail_y = base_y + 48 * mm
+        leg_y = base_y
+
+        part_box(cx - desk_w / 2, desktop_y, desk_w, top_h, "STEP 3 - DESKTOP TOP", "#FFFFFF", "#111111")
+        label("Lift/position desktop after frame is square", cx, desktop_y + top_h + 5 * mm, size=7)
+
+        part_box(cx - desk_w * 0.42, rail_y + 16 * mm, desk_w * 0.84, rail_h, "STEP 2 - REAR UPPER RAIL", "#F4F4F4", "#555555")
+        part_box(cx - desk_w * 0.42, rail_y - 4 * mm, desk_w * 0.84, rail_h, "STEP 2 - FRONT LOWER RAIL", "#F4F4F4", "#555555")
+        part_box(cx - desk_w * 0.52, rail_y + 2 * mm, 18 * mm, rail_h * 2.2, "SIDE RAIL L", "#F4F4F4", "#555555")
+        part_box(cx + desk_w * 0.52 - 18 * mm, rail_y + 2 * mm, 18 * mm, rail_h * 2.2, "SIDE RAIL R", "#F4F4F4", "#555555")
+        label("Clamp frame square before desktop fixing", cx, rail_y + 36 * mm, size=7)
+
+        leg_positions = [
+            (cx - desk_w * 0.42, leg_y, "FL"),
+            (cx + desk_w * 0.42 - leg_w, leg_y, "FR"),
+            (cx - desk_w * 0.28, leg_y + 8 * mm, "RL"),
+            (cx + desk_w * 0.28 - leg_w, leg_y + 8 * mm, "RR"),
+        ]
+        for lx, ly, name in leg_positions:
+            part_box(lx, ly, leg_w, leg_h, name, "#DDEBFF", "#005BFF")
+        label("STEP 1 - BUILD LEG/RAIL FRAME", cx, leg_y - 8 * mm, size=8, bold=True)
+
+        accessory_x = left + 8 * mm
+        accessory_y = base_y + 105 * mm
+        if params.has_cable_management:
+            part_box(accessory_x, accessory_y, 46 * mm, 13 * mm, "Cable Tray", "#E8FFF0", "#0B7A35")
+            arrow(accessory_x + 23 * mm, accessory_y, cx - desk_w * 0.22, rail_y + 18 * mm, "Step 4")
+        if params.has_mixer_tray:
+            part_box(accessory_x, accessory_y - 20 * mm, 46 * mm, 13 * mm, "Mixer Tray", "#FFF0D8", "#CC7A00")
+            arrow(accessory_x + 23 * mm, accessory_y - 7 * mm, cx, desktop_y, "Step 4")
+        if params.has_vesa_mount:
+            part_box(left + area_w - 58 * mm, accessory_y, 48 * mm, 13 * mm, "VESA Zone", "#F1E6FF", "#7A2DCC")
+            arrow(left + area_w - 34 * mm, accessory_y, cx + desk_w * 0.18, desktop_y + top_h, "Check load")
+        if params.has_headset_hook:
+            part_box(left + area_w - 58 * mm, accessory_y - 20 * mm, 48 * mm, 13 * mm, "Headset Hook", "#F1E6FF", "#7A2DCC")
+            arrow(left + area_w - 34 * mm, accessory_y - 7 * mm, cx + desk_w * 0.42, desktop_y, "Handed side")
+
+        c.setFillColor(colors.HexColor("#111111"))
+        c.setFont("Helvetica-Bold", 8)
+        c.drawString(left, bottom + area_h + 5 * mm, "Assembly direction reference")
+        c.setFont("Helvetica", 7)
+        c.drawString(left, bottom + area_h, "FRONT = user/seated side | BACK = cable/accessory side | LEFT/RIGHT from seated position")
+
+        footer_x = margin
+        footer_y = margin + 7 * mm
+        c.setFont("Helvetica-Bold", 8)
+        c.drawString(footer_x, footer_y + 12 * mm, "Exploded assembly order")
+        c.setFont("Helvetica", 7)
+        order = [
+            "1. Build leg/rail frame and clamp square.",
+            "2. Fit side/front/rear rails to legs.",
+            "3. Fit desktop to frame after alignment check.",
+            "4. Install cable tray, mixer tray, VESA/headset/accessories where selected.",
+            "5. Final check: square, level, hardware tightness, edge finish, cable clearances.",
+        ]
+        for idx, item in enumerate(order):
+            c.drawString(footer_x + 4 * mm, footer_y + (7 - idx) * mm, item)
+
+    def draw_joint_detail_diagrams_page():
+        c.showPage()
+        draw_header(f"{design_name} - Joint Detail Diagrams", "Manufacturing Instructions")
+        draw_note_box(page_height - margin - 18 * mm, "Joint diagrams are schematic manufacturing details. Confirm exact screw/dowel/insert hardware before cutting or assembly.")
+
+        start_x = margin
+        start_y = page_height - margin - 44 * mm
+        box_w = (page_width - 2 * margin - 12 * mm) / 2
+        box_h = 42 * mm
+        gap_x = 12 * mm
+        gap_y = 10 * mm
+
+        def detail_box(index, title, subtitle, notes, col, row):
+            x = start_x + col * (box_w + gap_x)
+            y = start_y - row * (box_h + gap_y)
+
+            c.setFillColor(colors.HexColor("#FAFAFA"))
+            c.setStrokeColor(colors.HexColor("#CCCCCC"))
+            c.roundRect(x, y - box_h, box_w, box_h, 2 * mm, fill=1, stroke=1)
+
+            c.setFillColor(colors.HexColor("#FF3B30"))
+            c.setFont("Helvetica-Bold", 9)
+            c.drawString(x + 3 * mm, y - 6 * mm, f"J{index:02d}")
+
+            c.setFillColor(colors.black)
+            c.setFont("Helvetica-Bold", 8)
+            c.drawString(x + 15 * mm, y - 6 * mm, title[:44])
+
+            c.setFont("Helvetica", 6.7)
+            c.setFillColor(colors.HexColor("#444444"))
+            c.drawString(x + 3 * mm, y - 11 * mm, subtitle[:72])
+
+            sx = x + box_w - 43 * mm
+            sy = y - 30 * mm
+            c.setStrokeColor(colors.HexColor("#333333"))
+            c.setFillColor(colors.HexColor("#FFFFFF"))
+            c.rect(sx, sy + 13 * mm, 34 * mm, 6 * mm, fill=1, stroke=1)
+            c.setFillColor(colors.HexColor("#DDEBFF"))
+            c.rect(sx + 4 * mm, sy, 8 * mm, 19 * mm, fill=1, stroke=1)
+            c.rect(sx + 23 * mm, sy, 8 * mm, 19 * mm, fill=1, stroke=1)
+
+            c.setFillColor(colors.HexColor("#FF3B30"))
+            for px in [sx + 8 * mm, sx + 27 * mm]:
+                c.circle(px, sy + 15.5 * mm, 1.2 * mm, fill=1, stroke=0)
+
+            text_y = y - 17 * mm
+            c.setFillColor(colors.black)
+            c.setFont("Helvetica", 6.4)
+            for note in notes[:4]:
+                c.drawString(x + 3 * mm, text_y, f"- {note}"[:82])
+                text_y -= 4.2 * mm
+
+        details = [
+            ("Desktop to frame rail", "Use underside fixing line; avoid breakthrough through desktop.", [
+                "Align desktop FRONT/BACK before fixing.",
+                "Use pilot holes from CNC/drill schedule.",
+                "Confirm screw length against material thickness.",
+                "Check cable/mixer openings before final fixing.",
+            ]),
+            ("Rail end to leg post", "Rail ends fix into leg posts; clamp square before tightening.", [
+                "Dry fit left/right frame first.",
+                "Keep rail flush and square to leg post.",
+                "Confirm edge distance before final fixing.",
+                "Do not over-tighten into board edge.",
+            ]),
+            ("Side rail to leg frame", "Side rail locks front/rear leg frames together.", [
+                "Confirm handed side before assembly.",
+                "Fit rails before desktop.",
+                "Check frame is not racked.",
+                "Use clamps until both sides are fixed.",
+            ]),
+            ("Cable tray / accessory fixing", "Accessory parts fix after main frame and desktop are square.", [
+                "Confirm cable tray opening direction.",
+                "Keep clear of cable pass-throughs.",
+                "Confirm mixer tray rebate orientation.",
+                "Confirm VESA/headset load and handedness.",
+            ]),
+        ]
+
+        for i, (title, subtitle, notes) in enumerate(details, start=1):
+            col = (i - 1) % 2
+            row = (i - 1) // 2
+            detail_box(i, title, subtitle, notes, col, row)
+
+        c.setFillColor(colors.HexColor("#333333"))
+        c.setFont("Helvetica-Bold", 8)
+        c.drawString(margin, margin + 18 * mm, "Joint detail notes")
+        c.setFont("Helvetica", 7)
+        footer_notes = [
+            "These joint details are schematic and must be read with the part schedule, CNC files, and hardware specification.",
+            "Final screw/bolt/dowel/insert type must suit material, load, edge distance, and supplier hardware.",
+            "Where hardware differs from design assumptions, update the manufacturing pack before cutting production parts.",
+        ]
+        yy = margin + 12 * mm
+        for note in footer_notes:
+            c.drawString(margin + 4 * mm, yy, f"- {note}")
+            yy -= 4.7 * mm
+
     def draw_parts_and_feature_schedule():
         c.showPage()
         draw_header(f"{design_name} - Review Schedule", "Design Review Drawings")
@@ -3685,6 +3887,8 @@ def generate_review_drawing_pdf_bytes(params: DesignParams, design_name: str = "
     draw_front_elevation()
     draw_side_elevation()
     draw_isometric_assembly_page()
+    draw_exploded_assembly_page()
+    draw_joint_detail_diagrams_page()
     draw_assembly_details_page()
     draw_hardware_schedule_page()
     draw_part_marking_page()
