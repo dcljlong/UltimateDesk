@@ -2771,6 +2771,303 @@ def generate_pdf_bytes(parts: List[Dict], nesting: NestingResult, params: Design
     buffer.seek(0)
     return buffer.getvalue()
 
+def generate_review_drawing_pdf_bytes(params: DesignParams, design_name: str = "UltimateDesk Design") -> bytes:
+    """Generate customer/manufacturer design review drawings before CNC export."""
+    from io import BytesIO
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.lib.units import mm
+    from reportlab.pdfgen import canvas
+
+    buffer = BytesIO()
+    page_width, page_height = landscape(A4)
+    c = canvas.Canvas(buffer, pagesize=(page_width, page_height))
+    margin = 12 * mm
+
+    width = float(params.width)
+    depth = float(params.depth)
+    height = float(params.height)
+    thickness = float(params.material_thickness)
+    leg_size = max(44, int(round(thickness * 2.4)))
+    leg_inset_x = max(70, int(round(width * 0.08)))
+    leg_inset_y = max(55, int(round(depth * 0.08)))
+    clear_span_x = max(300, width - ((leg_inset_x + leg_size) * 2))
+    clear_span_y = max(220, depth - ((leg_inset_y + leg_size) * 2))
+
+    parts = calculate_desk_parts(params)
+    nesting = simple_nesting(parts, 2400, 1200)
+
+    def feature_items(part, keys):
+        found = []
+        for key in keys:
+            items = part.get(key) or []
+            if isinstance(items, dict):
+                items = list(items.values())
+            if isinstance(items, list):
+                found.extend([item for item in items if isinstance(item, dict)])
+        return found
+
+    drill_total = sum(len(feature_items(p, ("drill_points", "holes", "joinery_holes", "connector_holes"))) for p in nesting.parts)
+    inside_total = sum(len(feature_items(p, ("cutouts", "inside_profiles", "internal_profiles", "internal_cutouts"))) for p in nesting.parts)
+    pocket_total = sum(len(feature_items(p, ("pockets", "rebates", "trays", "pocket_features", "recesses"))) for p in nesting.parts)
+
+    def draw_header(title: str, subtitle: str = ""):
+        c.setFillColor(colors.HexColor("#FF3B30"))
+        c.setFont("Helvetica-Bold", 18)
+        c.drawString(margin, page_height - margin, "UltimateDesk")
+        c.setFillColor(colors.black)
+        c.setFont("Helvetica-Bold", 13)
+        c.drawString(margin, page_height - margin - 8 * mm, title)
+        c.setFont("Helvetica", 8)
+        c.setFillColor(colors.HexColor("#666666"))
+        c.drawString(margin, page_height - margin - 13 * mm, f"Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
+        if subtitle:
+            c.drawRightString(page_width - margin, page_height - margin - 8 * mm, subtitle)
+
+    def draw_note_box(y_top: float, text: str):
+        box_h = 17 * mm
+        c.setFillColor(colors.HexColor("#FFF3CD"))
+        c.setStrokeColor(colors.HexColor("#E0B000"))
+        c.roundRect(margin, y_top - box_h, page_width - 2 * margin, box_h, 3 * mm, fill=1, stroke=1)
+        c.setFillColor(colors.HexColor("#5A4400"))
+        c.setFont("Helvetica-Bold", 8)
+        c.drawString(margin + 4 * mm, y_top - 5 * mm, "REVIEW NOTE")
+        c.setFont("Helvetica", 7)
+        c.drawString(margin + 28 * mm, y_top - 5 * mm, text[:160])
+        c.drawString(margin + 28 * mm, y_top - 10 * mm, "Confirm dimensions, hardware, material thickness, edge details, cable positions, and CNC settings before manufacture.")
+
+    def dim_line(x1, y1, x2, y2, label, offset=0):
+        c.setStrokeColor(colors.HexColor("#555555"))
+        c.setFillColor(colors.HexColor("#222222"))
+        c.setLineWidth(0.6)
+        c.line(x1, y1, x2, y2)
+        tick = 2.5 * mm
+        c.line(x1, y1 - tick, x1, y1 + tick)
+        c.line(x2, y2 - tick, x2, y2 + tick)
+        c.setFont("Helvetica-Bold", 8)
+        c.drawCentredString((x1 + x2) / 2, (y1 + y2) / 2 + offset, label)
+
+    def draw_part_rect(x, y, w, h, label, fill="#F8F8F8", stroke="#111111"):
+        c.setFillColor(colors.HexColor(fill))
+        c.setStrokeColor(colors.HexColor(stroke))
+        c.setLineWidth(1.0)
+        c.rect(x, y, w, h, fill=1, stroke=1)
+        c.setFillColor(colors.black)
+        c.setFont("Helvetica", 7)
+        c.drawCentredString(x + w / 2, y + h / 2, label[:48])
+
+    def draw_plan_page():
+        draw_header(f"{design_name} - Plan / Top View", "Design Review Drawings")
+        draw_note_box(page_height - margin - 18 * mm, "Plan view is for design approval and checking only. CNC files remain separate manufacturing outputs.")
+
+        draw_x = margin + 18 * mm
+        draw_y = margin + 26 * mm
+        draw_w = page_width - 2 * margin - 36 * mm
+        draw_h = page_height - 2 * margin - 80 * mm
+        scale = min(draw_w / width, draw_h / depth)
+        desk_w = width * scale
+        desk_h = depth * scale
+        x0 = draw_x + (draw_w - desk_w) / 2
+        y0 = draw_y + (draw_h - desk_h) / 2
+
+        draw_part_rect(x0, y0, desk_w, desk_h, "Desktop top", "#FFFFFF")
+
+        # Legs
+        leg_w = leg_size * scale
+        leg_h = leg_size * scale
+        leg_positions = [
+            (leg_inset_x, leg_inset_y, "FL"),
+            (width - leg_inset_x - leg_size, leg_inset_y, "FR"),
+            (leg_inset_x, depth - leg_inset_y - leg_size, "RL"),
+            (width - leg_inset_x - leg_size, depth - leg_inset_y - leg_size, "RR"),
+        ]
+        for lx, ly, label in leg_positions:
+            draw_part_rect(x0 + lx * scale, y0 + ly * scale, leg_w, leg_h, label, "#E7F0FF", "#005BFF")
+
+        # Cable tray / mixer / VESA indicators
+        if params.has_cable_management:
+            tray_w = max(500, min(width - (leg_inset_x * 2) - 120, int(width * 0.60)))
+            tray_h = 85
+            tx = x0 + (width - tray_w) / 2 * scale
+            ty = y0 + (depth - 130) * scale
+            draw_part_rect(tx, ty, tray_w * scale, tray_h * scale, "Cable tray zone", "#E8FFF0", "#0B7A35")
+
+        if params.has_mixer_tray:
+            mixer_w = max(280, min(int(params.mixer_tray_width or 520), clear_span_x))
+            mx = x0 + (width - mixer_w) / 2 * scale
+            my = y0 + 95 * scale
+            draw_part_rect(mx, my, mixer_w * scale, 170 * scale, "Mixer tray / rebate zone", "#FFF0D8", "#CC7A00")
+
+        if params.has_vesa_mount:
+            vx = x0 + (width / 2) * scale
+            vy = y0 + (depth - 145) * scale
+            c.setStrokeColor(colors.HexColor("#7A2DCC"))
+            c.setFillColor(colors.HexColor("#F1E6FF"))
+            c.circle(vx, vy, 10 * mm, fill=1, stroke=1)
+            c.setFillColor(colors.black)
+            c.setFont("Helvetica", 7)
+            c.drawCentredString(vx, vy - 2, "VESA")
+
+        dim_line(x0, y0 - 10 * mm, x0 + desk_w, y0 - 10 * mm, f"Overall width {int(width)}mm", offset=3 * mm)
+        dim_line(x0 - 10 * mm, y0, x0 - 10 * mm, y0 + desk_h, f"Depth {int(depth)}mm", offset=3 * mm)
+
+        c.setFont("Helvetica", 8)
+        c.setFillColor(colors.HexColor("#333333"))
+        c.drawString(margin, margin + 8 * mm, f"Leg inset: approx {leg_inset_x}mm x {leg_inset_y}mm | Material: {int(thickness)}mm | Sheets: {nesting.sheets_required}")
+
+    def draw_front_elevation():
+        c.showPage()
+        draw_header(f"{design_name} - Front Elevation", "Design Review Drawings")
+        draw_note_box(page_height - margin - 18 * mm, "Elevation confirms overall height, leg/rail proportions, and visual frame layout.")
+
+        draw_x = margin + 18 * mm
+        draw_y = margin + 30 * mm
+        draw_w = page_width - 2 * margin - 36 * mm
+        draw_h = page_height - 2 * margin - 82 * mm
+        scale = min(draw_w / width, draw_h / height)
+        w = width * scale
+        h = height * scale
+        x0 = draw_x + (draw_w - w) / 2
+        y0 = draw_y
+
+        # desktop
+        draw_part_rect(x0, y0 + (height - thickness) * scale, w, thickness * scale, "Desktop", "#FFFFFF")
+        # legs
+        leg_w = leg_size * scale
+        leg_h = (height - thickness) * scale
+        draw_part_rect(x0 + leg_inset_x * scale, y0, leg_w, leg_h, "Leg", "#E7F0FF", "#005BFF")
+        draw_part_rect(x0 + (width - leg_inset_x - leg_size) * scale, y0, leg_w, leg_h, "Leg", "#E7F0FF", "#005BFF")
+        # rails/modesty
+        draw_part_rect(x0 + (leg_inset_x + leg_size) * scale, y0 + (height - thickness - 65) * scale, clear_span_x * scale, 42 * scale, "Rear upper rail", "#F4F4F4")
+        draw_part_rect(x0 + (leg_inset_x + leg_size) * scale, y0 + 110 * scale, clear_span_x * scale, 30 * scale, "Front lower rail", "#F4F4F4")
+
+        dim_line(x0, y0 - 10 * mm, x0 + w, y0 - 10 * mm, f"{int(width)}mm", offset=3 * mm)
+        dim_line(x0 - 10 * mm, y0, x0 - 10 * mm, y0 + h, f"{int(height)}mm high", offset=3 * mm)
+        c.setFont("Helvetica", 8)
+        c.drawString(margin, margin + 8 * mm, f"Clear span between leg frames: approx {int(clear_span_x)}mm")
+
+    def draw_side_elevation():
+        c.showPage()
+        draw_header(f"{design_name} - Side Elevation", "Design Review Drawings")
+        draw_note_box(page_height - margin - 18 * mm, "Side elevation checks desk depth, side rail position, and leg proportions.")
+
+        draw_x = margin + 30 * mm
+        draw_y = margin + 30 * mm
+        draw_w = page_width - 2 * margin - 60 * mm
+        draw_h = page_height - 2 * margin - 82 * mm
+        scale = min(draw_w / depth, draw_h / height)
+        w = depth * scale
+        h = height * scale
+        x0 = draw_x + (draw_w - w) / 2
+        y0 = draw_y
+
+        draw_part_rect(x0, y0 + (height - thickness) * scale, w, thickness * scale, "Desktop depth", "#FFFFFF")
+        leg_w = leg_size * scale
+        leg_h = (height - thickness) * scale
+        draw_part_rect(x0 + leg_inset_y * scale, y0, leg_w, leg_h, "Front leg", "#E7F0FF", "#005BFF")
+        draw_part_rect(x0 + (depth - leg_inset_y - leg_size) * scale, y0, leg_w, leg_h, "Rear leg", "#E7F0FF", "#005BFF")
+        draw_part_rect(x0 + (leg_inset_y + leg_size) * scale, y0 + 120 * scale, clear_span_y * scale, 30 * scale, "Side rail", "#F4F4F4")
+
+        dim_line(x0, y0 - 10 * mm, x0 + w, y0 - 10 * mm, f"{int(depth)}mm depth", offset=3 * mm)
+        dim_line(x0 - 10 * mm, y0, x0 - 10 * mm, y0 + h, f"{int(height)}mm high", offset=3 * mm)
+
+    def draw_parts_and_feature_schedule():
+        c.showPage()
+        draw_header(f"{design_name} - Review Schedule", "Design Review Drawings")
+        draw_note_box(page_height - margin - 18 * mm, "Schedule is for design checking. Confirm feature quantities and hardware before CNC cutting.")
+
+        y = page_height - margin - 42 * mm
+        c.setFillColor(colors.black)
+        c.setFont("Helvetica-Bold", 10)
+        c.drawString(margin, y, "Design summary")
+        y -= 8 * mm
+        c.setFont("Helvetica", 8)
+        summary = [
+            f"Overall size: {int(width)}W x {int(depth)}D x {int(height)}H mm",
+            f"Material thickness: {int(thickness)}mm",
+            f"Sheets required: {nesting.sheets_required}",
+            f"Parts: {len(nesting.parts)}",
+            f"Drill features: {drill_total}",
+            f"Inside cutouts: {inside_total}",
+            f"Pockets/rebates: {pocket_total}",
+            f"Cable management: {'Yes' if params.has_cable_management else 'No'}",
+            f"Mixer tray: {'Yes' if params.has_mixer_tray else 'No'}",
+            f"VESA mount: {'Yes' if params.has_vesa_mount else 'No'}",
+            f"Headset hook: {'Yes' if params.has_headset_hook else 'No'}",
+        ]
+        for item in summary:
+            c.drawString(margin + 4 * mm, y, f"- {item}")
+            y -= 5 * mm
+
+        y -= 6 * mm
+        c.setFont("Helvetica-Bold", 9)
+        columns = [
+            ("#", 9 * mm),
+            ("Part", 70 * mm),
+            ("W", 18 * mm),
+            ("H", 18 * mm),
+            ("Sheet", 16 * mm),
+            ("Drill", 16 * mm),
+            ("Inside", 16 * mm),
+            ("Pocket", 18 * mm),
+        ]
+        x_positions = [margin]
+        for _, col_w in columns[:-1]:
+            x_positions.append(x_positions[-1] + col_w)
+
+        row_h = 7 * mm
+
+        def draw_row(values, bold=False):
+            nonlocal y
+            if y < 22 * mm:
+                c.showPage()
+                draw_header(f"{design_name} - Review Schedule", "continued")
+                y = page_height - margin - 20 * mm
+            c.setFillColor(colors.HexColor("#F5F5F5") if bold else colors.white)
+            c.setStrokeColor(colors.HexColor("#DDDDDD"))
+            c.rect(margin, y - row_h + 1, sum(w for _, w in columns), row_h, fill=1, stroke=1)
+            c.setFillColor(colors.black)
+            c.setFont("Helvetica-Bold" if bold else "Helvetica", 7)
+            for idx, value in enumerate(values):
+                c.drawString(x_positions[idx] + 1 * mm, y - 5 * mm, str(value)[:38])
+            y -= row_h
+
+        draw_row([label for label, _ in columns], bold=True)
+        for idx, part in enumerate(nesting.parts, start=1):
+            draw_row([
+                idx,
+                part["name"],
+                part["width"],
+                part["height"],
+                part.get("sheet", 0) + 1,
+                len(feature_items(part, ("drill_points", "holes", "joinery_holes", "connector_holes"))),
+                len(feature_items(part, ("cutouts", "inside_profiles", "internal_profiles", "internal_cutouts"))),
+                len(feature_items(part, ("pockets", "rebates", "trays", "pocket_features", "recesses"))),
+            ])
+
+    draw_plan_page()
+    draw_front_elevation()
+    draw_side_elevation()
+    draw_parts_and_feature_schedule()
+
+    c.save()
+    buffer.seek(0)
+    return buffer.getvalue()
+
+
+@api_router.post("/review-drawings/pdf")
+async def generate_review_drawings_pdf(export_req: ExportRequest):
+    """Generate a dimensioned design review PDF before manufacturing export."""
+    pdf_bytes = generate_review_drawing_pdf_bytes(export_req.params, export_req.design_name or "UltimateDesk Design")
+    safe_name = (export_req.design_name or "UltimateDesk_Review_Drawings").replace(" ", "_")
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{safe_name}_review_drawings.pdf"'
+        }
+    )
+
 # ============== EXPORT ENDPOINTS ==============
 
 exports_router = APIRouter(prefix="/exports", tags=["Pro Exports"])
