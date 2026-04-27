@@ -2582,16 +2582,46 @@ def generate_pdf_bytes(parts: List[Dict], nesting: NestingResult, params: Design
     inside_total = sum(feature_count(p, ("cutouts", "inside_profiles", "internal_profiles", "internal_cutouts")) for p in parts)
     pocket_total = sum(feature_count(p, ("pockets", "rebates", "trays", "pocket_features", "recesses")) for p in parts)
 
-    def draw_header(title: str):
-        c.setFillColor(colors.HexColor("#FF3B30"))
-        c.setFont("Helvetica-Bold", 18)
-        c.drawString(margin, page_height - margin, "UltimateDesk")
+    from datetime import datetime as _ud_datetime
+    safe_design_ref = ''.join(ch for ch in str(design_name).upper() if ch.isalnum())[:12] or 'DESIGN'
+    drawing_id = f"UD-MFG-{safe_design_ref}"
+    drawing_revision = 'A'
+    drawing_issue_date = _ud_datetime.utcnow().strftime('%Y-%m-%d')
+    sheet_counter = {'value': 0}
+
+    def draw_header(title, subtitle=''):
+        sheet_counter['value'] += 1
+        current_sheet = sheet_counter['value']
+
+        title_block_h = 16 * mm
+        title_block_y = page_height - margin - title_block_h
+        right_block_w = 68 * mm
+        right_block_x = page_width - margin - right_block_w
+
+        c.setStrokeColor(colors.HexColor('#111111'))
+        c.setLineWidth(0.8)
+        c.rect(margin, title_block_y, page_width - 2 * margin, title_block_h, fill=0, stroke=1)
+        c.line(right_block_x, title_block_y, right_block_x, title_block_y + title_block_h)
+        c.line(right_block_x, title_block_y + title_block_h / 2, page_width - margin, title_block_y + title_block_h / 2)
+        c.line(right_block_x + right_block_w / 2, title_block_y, right_block_x + right_block_w / 2, title_block_y + title_block_h)
+
         c.setFillColor(colors.black)
-        c.setFont("Helvetica-Bold", 14)
-        c.drawString(margin, page_height - margin - 8 * mm, title)
-        c.setFont("Helvetica", 9)
-        c.setFillColor(colors.HexColor("#666666"))
-        c.drawString(margin, page_height - margin - 13 * mm, f"Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
+        c.setFont('Helvetica-Bold', 10.5)
+        c.drawString(margin + 3 * mm, title_block_y + 9.5 * mm, str(title)[:92])
+        c.setFont('Helvetica', 7)
+        c.drawString(margin + 3 * mm, title_block_y + 4.2 * mm, str(subtitle)[:100])
+
+        c.setFont('Helvetica-Bold', 5.8)
+        c.drawString(right_block_x + 2 * mm, title_block_y + 11.5 * mm, 'DRAWING ID')
+        c.drawString(right_block_x + right_block_w / 2 + 2 * mm, title_block_y + 11.5 * mm, 'REV')
+        c.drawString(right_block_x + 2 * mm, title_block_y + 3.5 * mm, 'SHEET')
+        c.drawString(right_block_x + right_block_w / 2 + 2 * mm, title_block_y + 3.5 * mm, 'DATE')
+
+        c.setFont('Helvetica', 6.6)
+        c.drawString(right_block_x + 2 * mm, title_block_y + 8.2 * mm, drawing_id[:24])
+        c.drawString(right_block_x + right_block_w / 2 + 2 * mm, title_block_y + 8.2 * mm, drawing_revision)
+        c.drawString(right_block_x + 2 * mm, title_block_y + 0.8 * mm, f'{current_sheet:02d}')
+        c.drawString(right_block_x + right_block_w / 2 + 2 * mm, title_block_y + 0.8 * mm, drawing_issue_date)
 
     def draw_disclaimer(top_y: float):
         box_h = 14 * mm
@@ -3901,6 +3931,99 @@ def generate_review_drawing_pdf_bytes(params: DesignParams, design_name: str = "
             c.drawString(margin + 4 * mm, yy, f"- {note}")
             yy -= 4.7 * mm
 
+    def draw_approval_signoff_page():
+        c.showPage()
+        draw_header(f"{design_name} - Approval / Release Sign-Off", "Manufacturing Review Pack")
+
+        y = page_height - margin - 38 * mm
+
+        c.setFillColor(colors.HexColor("#111111"))
+        c.setFont("Helvetica-Bold", 11)
+        c.drawString(margin, y, "Manufacturing pack release details")
+        y -= 8 * mm
+
+        from datetime import datetime as _ud_signoff_datetime
+        signoff_safe_design_ref = ''.join(ch for ch in str(design_name).upper() if ch.isalnum())[:12] or 'DESIGN'
+        signoff_drawing_id = f"UD-MFG-{signoff_safe_design_ref}"
+        signoff_drawing_revision = 'A'
+        signoff_issue_date = _ud_signoff_datetime.utcnow().strftime('%Y-%m-%d')
+
+        details = [
+            ("Drawing ID", signoff_drawing_id),
+            ("Revision", signoff_drawing_revision),
+            ("Issue date", signoff_issue_date),
+            ("Design name", design_name),
+            ("Pack status", "FOR MANUFACTURING REVIEW / PRE-PRODUCTION CHECK"),
+            ("CNC status", "CNC geometry controlled by DXF/NC exports; verify in CAM/controller preview"),
+            ("Commercial caution", "Not architectural consent drawings or certified engineering documents"),
+        ]
+
+        row_h = 8 * mm
+        label_w = 45 * mm
+        value_w = page_width - 2 * margin - label_w
+
+        for label_text, value_text in details:
+            c.setFillColor(colors.HexColor("#F6F6F6"))
+            c.setStrokeColor(colors.HexColor("#DDDDDD"))
+            c.rect(margin, y - row_h + 1, label_w, row_h, fill=1, stroke=1)
+            c.rect(margin + label_w, y - row_h + 1, value_w, row_h, fill=0, stroke=1)
+
+            c.setFillColor(colors.black)
+            c.setFont("Helvetica-Bold", 7)
+            c.drawString(margin + 2 * mm, y - 5.2 * mm, label_text)
+            c.setFont("Helvetica", 7)
+            c.drawString(margin + label_w + 2 * mm, y - 5.2 * mm, str(value_text)[:105])
+            y -= row_h
+
+        y -= 10 * mm
+
+        c.setFillColor(colors.HexColor("#111111"))
+        c.setFont("Helvetica-Bold", 11)
+        c.drawString(margin, y, "Required review sign-offs")
+        y -= 8 * mm
+
+        signoff_rows = [
+            ("Design reviewed by", "Name / signature", "Date"),
+            ("Manufacturing reviewed by", "Name / signature", "Date"),
+            ("CNC/CAM verified by", "Name / signature", "Date"),
+            ("Final release approved by", "Name / signature", "Date"),
+        ]
+
+        col_w = [58 * mm, 104 * mm, 40 * mm]
+        row_h = 13 * mm
+
+        c.setFont("Helvetica-Bold", 7)
+        for row in signoff_rows:
+            x = margin
+            for idx, value in enumerate(row):
+                c.setFillColor(colors.HexColor("#FFFFFF"))
+                c.setStrokeColor(colors.HexColor("#BBBBBB"))
+                c.rect(x, y - row_h, col_w[idx], row_h, fill=1, stroke=1)
+                c.setFillColor(colors.black)
+                c.drawString(x + 2 * mm, y - 5 * mm, value)
+                x += col_w[idx]
+            y -= row_h
+
+        y -= 9 * mm
+
+        c.setFillColor(colors.HexColor("#111111"))
+        c.setFont("Helvetica-Bold", 10)
+        c.drawString(margin, y, "Release checklist")
+        y -= 7 * mm
+
+        checklist = [
+            "Review all dimensions, feature locations, handed parts, and orientation labels.",
+            "Confirm material thickness, board size, cutter diameter, feeds, speeds, post processor, and work origin.",
+            "Verify DXF/NC/SVG/PDF outputs match the same design revision before cutting.",
+            "Verify all toolpaths in CAM/controller preview before production manufacture.",
+            "Confirm hardware quantities and fixing types against supplier hardware and load requirements.",
+        ]
+
+        c.setFont("Helvetica", 7.2)
+        for item in checklist:
+            c.drawString(margin + 4 * mm, y, f"☐ {item}")
+            y -= 5.5 * mm
+
     def draw_parts_and_feature_schedule():
         c.showPage()
         draw_header(f"{design_name} - Review Schedule", "Design Review Drawings")
@@ -3985,6 +4108,7 @@ def generate_review_drawing_pdf_bytes(params: DesignParams, design_name: str = "
     draw_hardware_schedule_page()
     draw_part_marking_page()
     draw_cut_part_labels_page()
+    draw_approval_signoff_page()
     draw_parts_and_feature_schedule()
 
     c.save()
