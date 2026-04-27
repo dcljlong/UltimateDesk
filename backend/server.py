@@ -2169,14 +2169,32 @@ def generate_connection_holes(connections, params):
     return holes
 
 def generate_dxf(parts: List[Dict], config: CNCConfig, design_name: str) -> str:
-    """Generate DXF file for CAD/CAM import, separated by sheet."""
+    """Generate DXF file for CAD/CAM import with visible cut, drill, pocket, and internal cutout layers."""
     sheet_gap = 400
     title_band = 80
-
-    sheet_indexes = sorted({part.get('sheet', 0) for part in parts}) or [0]
+    sheet_indexes = sorted({part.get("sheet", 0) for part in parts}) or [0]
     sheet_count = max(sheet_indexes) + 1
     total_width = (sheet_count * config.sheet_width) + ((sheet_count - 1) * sheet_gap)
     total_height = config.sheet_height + title_band
+
+    def num(source, *names, default=0):
+        for name in names:
+            if isinstance(source, dict) and source.get(name) is not None:
+                try:
+                    return float(source.get(name))
+                except (TypeError, ValueError):
+                    return float(default)
+        return float(default)
+
+    def feature_list(part, keys):
+        found = []
+        for key in keys:
+            items = part.get(key) or []
+            if isinstance(items, dict):
+                items = list(items.values())
+            if isinstance(items, list):
+                found.extend([item for item in items if isinstance(item, dict)])
+        return found
 
     dxf_lines = [
         "0", "SECTION",
@@ -2197,83 +2215,141 @@ def generate_dxf(parts: List[Dict], config: CNCConfig, design_name: str) -> str:
         "30", "0.0",
         "0", "ENDSEC",
         "0", "SECTION",
-        "2", "ENTITIES"
+        "2", "ENTITIES",
     ]
+
+    def add_line(layer, x1, y1, x2, y2):
+        dxf_lines.extend([
+            "0", "LINE", "8", layer,
+            "10", str(round(x1, 3)), "20", str(round(y1, 3)), "30", "0.0",
+            "11", str(round(x2, 3)), "21", str(round(y2, 3)), "31", "0.0",
+        ])
+
+    def add_rect(layer, x, y, w, h):
+        add_line(layer, x, y, x + w, y)
+        add_line(layer, x + w, y, x + w, y + h)
+        add_line(layer, x + w, y + h, x, y + h)
+        add_line(layer, x, y + h, x, y)
+
+    def add_circle(layer, cx, cy, radius):
+        dxf_lines.extend([
+            "0", "CIRCLE", "8", layer,
+            "10", str(round(cx, 3)),
+            "20", str(round(cy, 3)),
+            "30", "0.0",
+            "40", str(round(radius, 3)),
+        ])
+
+    def add_text(layer, x, y, size, text):
+        dxf_lines.extend([
+            "0", "TEXT",
+            "8", layer,
+            "10", str(round(x, 3)),
+            "20", str(round(y, 3)),
+            "30", "0.0",
+            "40", str(round(size, 3)),
+            "72", "1",
+            "73", "2",
+            "11", str(round(x, 3)),
+            "21", str(round(y, 3)),
+            "31", "0.0",
+            "1", str(text)[:120],
+        ])
 
     for sheet_idx in sheet_indexes:
         x_offset = sheet_idx * (config.sheet_width + sheet_gap)
-
-        dxf_lines.extend([
-            "0", "LINE", "8", "SHEET_FRAME", "10", str(x_offset), "20", "0", "30", "0.0", "11", str(x_offset + config.sheet_width), "21", "0", "31", "0.0",
-            "0", "LINE", "8", "SHEET_FRAME", "10", str(x_offset + config.sheet_width), "20", "0", "30", "0.0", "11", str(x_offset + config.sheet_width), "21", str(config.sheet_height), "31", "0.0",
-            "0", "LINE", "8", "SHEET_FRAME", "10", str(x_offset + config.sheet_width), "20", str(config.sheet_height), "30", "0.0", "11", str(x_offset), "21", str(config.sheet_height), "31", "0.0",
-            "0", "LINE", "8", "SHEET_FRAME", "10", str(x_offset), "20", str(config.sheet_height), "30", "0.0", "11", str(x_offset), "21", "0", "31", "0.0",
-            "0", "TEXT", "8", "SHEET_LABELS", "10", str(x_offset + 20), "20", str(config.sheet_height + 30), "30", "0.0", "40", "28.0", "1", f"Sheet {sheet_idx + 1}"
-        ])
+        add_rect("SHEET_FRAME", x_offset, 0, config.sheet_width, config.sheet_height)
+        add_text("SHEET_LABELS", x_offset + 90, config.sheet_height + 30, 28.0, f"Sheet {sheet_idx + 1}")
 
     for i, part in enumerate(parts):
-        sheet_idx = part.get('sheet', 0)
+        sheet_idx = part.get("sheet", 0)
         x_offset = sheet_idx * (config.sheet_width + sheet_gap)
-        x = x_offset + part.get('x', 0)
-        y = part.get('y', 0)
-        w, h = part['width'], part['height']
+        x = x_offset + part.get("x", 0)
+        y = part.get("y", 0)
+        w, h = part["width"], part["height"]
+        part_layer = f"CUT_SHEET_{sheet_idx + 1}"
 
-        dxf_lines.extend([
-            "0", "LINE", "8", f"PART_{sheet_idx+1}_{i+1}", "10", str(x), "20", str(y), "30", "0.0", "11", str(x + w), "21", str(y), "31", "0.0",
-            "0", "LINE", "8", f"PART_{sheet_idx+1}_{i+1}", "10", str(x + w), "20", str(y), "30", "0.0", "11", str(x + w), "21", str(y + h), "31", "0.0",
-            "0", "LINE", "8", f"PART_{sheet_idx+1}_{i+1}", "10", str(x + w), "20", str(y + h), "30", "0.0", "11", str(x), "21", str(y + h), "31", "0.0",
-            "0", "LINE", "8", f"PART_{sheet_idx+1}_{i+1}", "10", str(x), "20", str(y + h), "30", "0.0", "11", str(x), "21", str(y), "31", "0.0"
-        ])
+        add_rect(part_layer, x, y, w, h)
+
+        for hole in feature_list(part, ("drill_points", "holes", "joinery_holes", "connector_holes")):
+            hx = x + num(hole, "x", "center_x", "cx")
+            hy = y + num(hole, "y", "center_y", "cy")
+            dia = max(0.5, num(hole, "diameter", "dia", "d", default=getattr(config, "bit_size", 6)))
+            add_circle("DRILL", hx, hy, dia / 2)
+
+        for cutout in feature_list(part, ("cutouts", "inside_profiles", "internal_profiles", "internal_cutouts")):
+            cx = x + num(cutout, "x", "left")
+            cy = y + num(cutout, "y", "bottom", "top")
+            cw = num(cutout, "width", "w")
+            ch = num(cutout, "height", "h")
+            if cw > 0 and ch > 0:
+                add_rect("INSIDE_CUT", cx, cy, cw, ch)
+
+        for pocket in feature_list(part, ("pockets", "rebates", "trays", "pocket_features", "recesses")):
+            px = x + num(pocket, "x", "left")
+            py = y + num(pocket, "y", "bottom", "top")
+            pw = num(pocket, "width", "w")
+            ph = num(pocket, "height", "h")
+            if pw > 0 and ph > 0:
+                add_rect("POCKET", px, py, pw, ph)
 
         label_x = x + (w / 2)
         label_y = y + (h / 2)
         label_size = max(10.0, min(24.0, min(w, h) * 0.10))
-        label_text = part['name'] if min(w, h) < 140 else f"{part['name']} ({w}x{h})"
+        label_text = part["name"] if min(w, h) < 140 else f"{part['name']} ({w}x{h})"
+        add_text("LABELS", label_x, label_y, label_size, label_text)
 
-        dxf_lines.extend([
-            "0", "TEXT",
-            "8", "LABELS",
-            "10", str(label_x),
-            "20", str(label_y),
-            "30", "0.0",
-            "40", str(label_size),
-            "72", "1",
-            "73", "2",
-            "11", str(label_x),
-            "21", str(label_y),
-            "31", "0.0",
-            "1", label_text
-        ])
-
-    dxf_lines.extend([
-        "0", "ENDSEC",
-        "0", "EOF"
-    ])
-
-    return '\n'.join(dxf_lines)
+    dxf_lines.extend(["0", "ENDSEC", "0", "EOF"])
+    return "\n".join(dxf_lines)
 
 def generate_svg(parts: List[Dict], config: CNCConfig, design_name: str) -> str:
-    """Generate SVG cutting layout separated by sheet."""
+    """Generate SVG cutting layout separated by sheet with visible CNC features."""
     sw, sh = config.sheet_width, config.sheet_height
     sheet_gap = 400
     title_band = 80
 
-    sheet_indexes = sorted({part.get('sheet', 0) for part in parts}) or [0]
+    sheet_indexes = sorted({part.get("sheet", 0) for part in parts}) or [0]
     sheet_count = max(sheet_indexes) + 1
     total_width = (sheet_count * sw) + ((sheet_count - 1) * sheet_gap)
     total_height = sh + title_band
 
+    def num(source, *names, default=0):
+        for name in names:
+            if isinstance(source, dict) and source.get(name) is not None:
+                try:
+                    return float(source.get(name))
+                except (TypeError, ValueError):
+                    return float(default)
+        return float(default)
+
+    def feature_list(part, keys):
+        found = []
+        for key in keys:
+            items = part.get(key) or []
+            if isinstance(items, dict):
+                items = list(items.values())
+            if isinstance(items, list):
+                found.extend([item for item in items if isinstance(item, dict)])
+        return found
+
     lines = [
-        f'<?xml version="1.0" encoding="UTF-8"?>',
+        '<?xml version="1.0" encoding="UTF-8"?>',
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {total_width} {total_height}" width="{total_width}mm" height="{total_height}mm">',
         f'  <title>{design_name} - UltimateDesk</title>',
-        f'  <desc>18mm plywood cutting layout. Verify in CAM software before cutting.</desc>',
-        f'  <style>',
-        f'    .sheet-title {{ font: 28px Arial, sans-serif; fill: #333; font-weight: bold; }}',
-        f'    .part-label {{ font: 16px Arial, sans-serif; fill: #222; text-anchor: middle; dominant-baseline: middle; }}',
-        f'    .sheet-frame {{ fill: none; stroke: #888; stroke-width: 2; }}',
-        f'    .part-rect {{ fill: none; stroke: #000; stroke-width: 2; }}',
-        f'  </style>',
+        '  <desc>18mm plywood cutting layout with cut, drill, pocket, and inside-cut features. Verify in CAM software before cutting.</desc>',
+        '  <style>',
+        '    .sheet-title { font: 28px Arial, sans-serif; fill: #333; font-weight: bold; }',
+        '    .part-label { font: 16px Arial, sans-serif; fill: #222; text-anchor: middle; dominant-baseline: middle; }',
+        '    .sheet-frame { fill: none; stroke: #888; stroke-width: 2; }',
+        '    .part-rect { fill: none; stroke: #000; stroke-width: 2; }',
+        '    .drill-hole { fill: none; stroke: #0b61ff; stroke-width: 2; }',
+        '    .inside-cut { fill: rgba(255,0,0,0.10); stroke: #d11; stroke-width: 2; stroke-dasharray: 8 4; }',
+        '    .pocket { fill: rgba(255,165,0,0.18); stroke: #cc7a00; stroke-width: 2; stroke-dasharray: 5 4; }',
+        '    .legend { font: 18px Arial, sans-serif; fill: #333; }',
+        '  </style>',
+        '  <g id="legend">',
+        '    <text class="legend" x="20" y="70">Black=outside cut | Blue=drill | Red dashed=inside cut | Orange dashed=pocket/rebate</text>',
+        '  </g>',
     ]
 
     for sheet_idx in sheet_indexes:
@@ -2281,7 +2357,7 @@ def generate_svg(parts: List[Dict], config: CNCConfig, design_name: str) -> str:
         lines.append(f'  <g id="sheet-{sheet_idx + 1}">')
         lines.append(f'    <text class="sheet-title" x="{x_offset + 20}" y="35">Sheet {sheet_idx + 1}</text>')
         lines.append(f'    <rect class="sheet-frame" x="{x_offset}" y="{title_band}" width="{sw}" height="{sh}"/>')
-        lines.append(f'  </g>')
+        lines.append('  </g>')
 
     for i, p in enumerate(parts):
         sheet_idx = p.get("sheet", 0)
@@ -2291,28 +2367,61 @@ def generate_svg(parts: List[Dict], config: CNCConfig, design_name: str) -> str:
         w, h = p["width"], p["height"]
         label_size = max(10, min(22, int(min(w, h) * 0.10)))
         label_text = p["name"] if min(w, h) < 140 else f'{p["name"]} ({w}x{h})'
-        lines.append(
-            f'  <g id="part-{i+1}" data-name="{p["name"]}" data-sheet="{sheet_idx + 1}">'
-            f'<rect class="part-rect" x="{x}" y="{y}" width="{w}" height="{h}"/>'
-            f'<text class="part-label" x="{x + w/2}" y="{y + h/2}" font-size="{label_size}">{label_text}</text>'
-            f'</g>'
-        )
+
+        lines.append(f'  <g id="part-{i + 1}" data-name="{p["name"]}" data-sheet="{sheet_idx + 1}">')
+        lines.append(f'    <rect class="part-rect" x="{x}" y="{y}" width="{w}" height="{h}"/>')
+
+        for hole in feature_list(p, ("drill_points", "holes", "joinery_holes", "connector_holes")):
+            hx = x + num(hole, "x", "center_x", "cx")
+            hy = y + num(hole, "y", "center_y", "cy")
+            dia = max(0.5, num(hole, "diameter", "dia", "d", default=getattr(config, "bit_size", 6)))
+            lines.append(f'    <circle class="drill-hole" cx="{hx}" cy="{hy}" r="{dia / 2}" data-name="{hole.get("name", "drill")}"/>')
+
+        for cutout in feature_list(p, ("cutouts", "inside_profiles", "internal_profiles", "internal_cutouts")):
+            cx = x + num(cutout, "x", "left")
+            cy = y + num(cutout, "y", "bottom", "top")
+            cw = num(cutout, "width", "w")
+            ch = num(cutout, "height", "h")
+            if cw > 0 and ch > 0:
+                lines.append(f'    <rect class="inside-cut" x="{cx}" y="{cy}" width="{cw}" height="{ch}" data-name="{cutout.get("name", "inside cut")}"/>')
+
+        for pocket in feature_list(p, ("pockets", "rebates", "trays", "pocket_features", "recesses")):
+            px = x + num(pocket, "x", "left")
+            py = y + num(pocket, "y", "bottom", "top")
+            pw = num(pocket, "width", "w")
+            ph = num(pocket, "height", "h")
+            if pw > 0 and ph > 0:
+                lines.append(f'    <rect class="pocket" x="{px}" y="{py}" width="{pw}" height="{ph}" data-name="{pocket.get("name", "pocket")}"/>')
+
+        lines.append(f'    <text class="part-label" x="{x + w / 2}" y="{y + h / 2}" font-size="{label_size}">{label_text}</text>')
+        lines.append('  </g>')
 
     lines.append('</svg>')
-    return '\n'.join(lines)
+    return "\n".join(lines)
 
 def generate_pdf_html(parts: List[Dict], nesting: NestingResult, params: DesignParams, design_name: str) -> str:
-    """Generate HTML that can be converted to PDF cutting sheet"""
+    """Generate HTML reference cutting sheet with visible CNC feature markers."""
     sheet_w, sheet_h = 2400, 1200
-    scale = 0.25  # Scale for visualization
+    scale = 0.25
 
-    # Group parts by sheet
+    def feature_count(part, keys):
+        total = 0
+        for key in keys:
+            items = part.get(key) or []
+            if isinstance(items, dict):
+                items = list(items.values())
+            if isinstance(items, list):
+                total += len([item for item in items if isinstance(item, dict)])
+        return total
+
+    drill_total = sum(feature_count(p, ("drill_points", "holes", "joinery_holes", "connector_holes")) for p in parts)
+    inside_total = sum(feature_count(p, ("cutouts", "inside_profiles", "internal_profiles", "internal_cutouts")) for p in parts)
+    pocket_total = sum(feature_count(p, ("pockets", "rebates", "trays", "pocket_features", "recesses")) for p in parts)
+
     sheets_parts = {}
     for part in parts:
-        sheet_idx = part.get('sheet', 0)
-        if sheet_idx not in sheets_parts:
-            sheets_parts[sheet_idx] = []
-        sheets_parts[sheet_idx].append(part)
+        sheet_idx = part.get("sheet", 0)
+        sheets_parts.setdefault(sheet_idx, []).append(part)
 
     html = f"""<!DOCTYPE html>
 <html>
@@ -2324,16 +2433,15 @@ def generate_pdf_html(parts: List[Dict], nesting: NestingResult, params: DesignP
         h1 {{ color: #FF3B30; margin-bottom: 5px; }}
         .header {{ border-bottom: 2px solid #FF3B30; padding-bottom: 15px; margin-bottom: 20px; }}
         .disclaimer {{ background: #FFF3CD; border: 1px solid #FFE69C; padding: 15px; margin: 20px 0; border-radius: 8px; }}
-        .disclaimer strong {{ color: #856404; }}
         .specs {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 20px 0; }}
         .spec-box {{ background: #f5f5f5; padding: 10px; border-radius: 5px; text-align: center; }}
-        .spec-box .value {{ font-size: 24px; font-weight: bold; color: #FF3B30; }}
+        .spec-box .value {{ font-size: 22px; font-weight: bold; color: #FF3B30; }}
         .spec-box .label {{ font-size: 12px; color: #666; }}
         .sheet {{ margin: 30px 0; page-break-inside: avoid; }}
         .sheet-title {{ font-size: 18px; font-weight: bold; margin-bottom: 10px; }}
         .sheet-visual {{ border: 2px solid #333; background: #D4A574; position: relative; }}
         .part {{ position: absolute; border: 2px solid #333; background: rgba(255,255,255,0.9); display: flex; align-items: center; justify-content: center; font-size: 10px; text-align: center; }}
-        .parts-list {{ margin-top: 20px; }}
+        .legend {{ font-size: 12px; margin: 8px 0 14px; }}
         .parts-list table {{ width: 100%; border-collapse: collapse; }}
         .parts-list th, .parts-list td {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
         .parts-list th {{ background: #f5f5f5; }}
@@ -2349,47 +2457,25 @@ def generate_pdf_html(parts: List[Dict], nesting: NestingResult, params: DesignP
 
     <div class="disclaimer">
         <strong>IMPORTANT SAFETY DISCLAIMER</strong><br>
-        This cutting sheet is a REFERENCE DOCUMENT. All measurements should be verified before cutting.
-        You are responsible for verifying toolpaths in your CAM software. UltimateDesk is not liable for
-        machine damage, material waste, or injury from unverified cuts.
+        This cutting sheet is a REFERENCE DOCUMENT. Verify dimensions and toolpaths in CAM before cutting.
     </div>
 
     <div class="specs">
-        <div class="spec-box">
-            <div class="value">{params.width}mm</div>
-            <div class="label">Width</div>
-        </div>
-        <div class="spec-box">
-            <div class="value">{params.depth}mm</div>
-            <div class="label">Depth</div>
-        </div>
-        <div class="spec-box">
-            <div class="value">{params.height}mm</div>
-            <div class="label">Height</div>
-        </div>
-        <div class="spec-box">
-            <div class="value">{nesting.sheets_required}</div>
-            <div class="label">Sheets Required</div>
-        </div>
+        <div class="spec-box"><div class="value">{params.width}mm</div><div class="label">Width</div></div>
+        <div class="spec-box"><div class="value">{params.depth}mm</div><div class="label">Depth</div></div>
+        <div class="spec-box"><div class="value">{params.height}mm</div><div class="label">Height</div></div>
+        <div class="spec-box"><div class="value">{nesting.sheets_required}</div><div class="label">Sheets Required</div></div>
     </div>
 
     <div class="specs">
-        <div class="spec-box">
-            <div class="value">{params.material_thickness}mm</div>
-            <div class="label">Material Thickness</div>
-        </div>
-        <div class="spec-box">
-            <div class="value">{nesting.waste_percentage}%</div>
-            <div class="label">Waste</div>
-        </div>
-        <div class="spec-box">
-            <div class="value">${nesting.sheets_required * 80:.2f}</div>
-            <div class="label">Est. Material Cost (NZD)</div>
-        </div>
-        <div class="spec-box">
-            <div class="value">{len(parts)}</div>
-            <div class="label">Total Parts</div>
-        </div>
+        <div class="spec-box"><div class="value">{drill_total}</div><div class="label">Drill Features</div></div>
+        <div class="spec-box"><div class="value">{inside_total}</div><div class="label">Inside Cuts</div></div>
+        <div class="spec-box"><div class="value">{pocket_total}</div><div class="label">Pockets/Rebates</div></div>
+        <div class="spec-box"><div class="value">{len(parts)}</div><div class="label">Total Parts</div></div>
+    </div>
+
+    <div class="legend">
+        Legend: black box = outside profile | blue dots = drill holes | red dashed box = inside cutout | orange dashed box = pocket/rebate
     </div>
 """
 
@@ -2399,7 +2485,7 @@ def generate_pdf_html(parts: List[Dict], nesting: NestingResult, params: DesignP
         <div class="sheet-title">Sheet {sheet_idx + 1} of {nesting.sheets_required} (2400mm x 1200mm)</div>
         <div class="sheet-visual" style="width: {sheet_w * scale}px; height: {sheet_h * scale}px;">
 """
-        colors = ['#FFE4E1', '#E0FFE0', '#E0E0FF', '#FFFFE0', '#FFE0FF', '#E0FFFF']
+        colors = ["#FFE4E1", "#E0FFE0", "#E0E0FF", "#FFFFE0", "#FFE0FF", "#E0FFFF"]
         for i, part in enumerate(sheet_parts):
             color = colors[i % len(colors)]
             html += f"""
@@ -2419,10 +2505,13 @@ def generate_pdf_html(parts: List[Dict], nesting: NestingResult, params: DesignP
             <tr>
                 <th>#</th>
                 <th>Part Name</th>
-                <th>Width (mm)</th>
-                <th>Height (mm)</th>
+                <th>Width</th>
+                <th>Height</th>
                 <th>Sheet</th>
                 <th>Rotated</th>
+                <th>Drill</th>
+                <th>Inside</th>
+                <th>Pocket</th>
             </tr>
 """
 
@@ -2435,6 +2524,9 @@ def generate_pdf_html(parts: List[Dict], nesting: NestingResult, params: DesignP
                 <td>{part['height']}</td>
                 <td>{part.get('sheet', 0) + 1}</td>
                 <td>{'Yes' if part.get('rotated') else 'No'}</td>
+                <td>{feature_count(part, ('drill_points', 'holes', 'joinery_holes', 'connector_holes'))}</td>
+                <td>{feature_count(part, ('cutouts', 'inside_profiles', 'internal_profiles', 'internal_cutouts'))}</td>
+                <td>{feature_count(part, ('pockets', 'rebates', 'trays', 'pocket_features', 'recesses'))}</td>
             </tr>
 """
 
@@ -2452,7 +2544,7 @@ def generate_pdf_html(parts: List[Dict], nesting: NestingResult, params: DesignP
     return html
 
 def generate_pdf_bytes(parts: List[Dict], nesting: NestingResult, params: DesignParams, design_name: str) -> bytes:
-    """Generate a real PDF cutting sheet using reportlab."""
+    """Generate a real PDF cutting sheet using reportlab, including visible drill/cutout/pocket features."""
     from io import BytesIO
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import A4, landscape
@@ -2463,6 +2555,32 @@ def generate_pdf_bytes(parts: List[Dict], nesting: NestingResult, params: Design
     page_width, page_height = landscape(A4)
     c = canvas.Canvas(buffer, pagesize=(page_width, page_height))
     margin = 12 * mm
+
+    def feature_items(part, keys):
+        found = []
+        for key in keys:
+            items = part.get(key) or []
+            if isinstance(items, dict):
+                items = list(items.values())
+            if isinstance(items, list):
+                found.extend([item for item in items if isinstance(item, dict)])
+        return found
+
+    def feature_count(part, keys):
+        return len(feature_items(part, keys))
+
+    def num(source, *names, default=0):
+        for name in names:
+            if isinstance(source, dict) and source.get(name) is not None:
+                try:
+                    return float(source.get(name))
+                except (TypeError, ValueError):
+                    return float(default)
+        return float(default)
+
+    drill_total = sum(feature_count(p, ("drill_points", "holes", "joinery_holes", "connector_holes")) for p in parts)
+    inside_total = sum(feature_count(p, ("cutouts", "inside_profiles", "internal_profiles", "internal_cutouts")) for p in parts)
+    pocket_total = sum(feature_count(p, ("pockets", "rebates", "trays", "pocket_features", "recesses")) for p in parts)
 
     def draw_header(title: str):
         c.setFillColor(colors.HexColor("#FF3B30"))
@@ -2495,9 +2613,9 @@ def generate_pdf_bytes(parts: List[Dict], nesting: NestingResult, params: Design
             (f"{params.depth}mm", "Depth"),
             (f"{params.height}mm", "Height"),
             (f"{nesting.sheets_required}", "Sheets"),
-            (f"{params.material_thickness}mm", "Material"),
-            (f"{nesting.waste_percentage}%", "Waste"),
-            (f"${nesting.sheets_required * 80:.0f}", "Material NZD"),
+            (f"{drill_total}", "Drill features"),
+            (f"{inside_total}", "Inside cuts"),
+            (f"{pocket_total}", "Pockets/rebates"),
             (f"{len(parts)}", "Parts"),
         ]
         x = margin
@@ -2539,9 +2657,9 @@ def generate_pdf_bytes(parts: List[Dict], nesting: NestingResult, params: Design
     for sheet_idx, sheet_parts in sorted(sheets_parts.items()):
         c.showPage()
         draw_header(f"{design_name} - Sheet {sheet_idx + 1} of {nesting.sheets_required}")
-        c.setFont("Helvetica", 9)
+        c.setFont("Helvetica", 8)
         c.setFillColor(colors.black)
-        c.drawString(margin, page_height - margin - 10 * mm, "2400mm x 1200mm sheet layout")
+        c.drawString(margin, page_height - margin - 10 * mm, "2400mm x 1200mm sheet layout | black=part, blue=drill, red=inside cut, orange=pocket")
 
         draw_x = margin
         draw_y = 45 * mm
@@ -2558,9 +2676,40 @@ def generate_pdf_bytes(parts: List[Dict], nesting: NestingResult, params: Design
             py = draw_y + (sheet_h - part.get("y", 0) - part["height"]) * scale
             pw = max(3, part["width"] * scale)
             ph = max(3, part["height"] * scale)
+
             c.setFillColor(colors_cycle[i % len(colors_cycle)])
             c.setStrokeColor(colors.HexColor("#333333"))
             c.rect(px, py, pw, ph, fill=1, stroke=1)
+
+            # Cutouts first so drill circles remain visible.
+            for cutout in feature_items(part, ("cutouts", "inside_profiles", "internal_profiles", "internal_cutouts")):
+                fx = num(cutout, "x", "left")
+                fy = num(cutout, "y", "bottom", "top")
+                fw = num(cutout, "width", "w")
+                fh = num(cutout, "height", "h")
+                if fw > 0 and fh > 0:
+                    c.setFillColor(colors.HexColor("#FFE5E5"))
+                    c.setStrokeColor(colors.HexColor("#CC0000"))
+                    c.rect(px + fx * scale, py + (part["height"] - fy - fh) * scale, fw * scale, fh * scale, fill=1, stroke=1)
+
+            for pocket in feature_items(part, ("pockets", "rebates", "trays", "pocket_features", "recesses")):
+                fx = num(pocket, "x", "left")
+                fy = num(pocket, "y", "bottom", "top")
+                fw = num(pocket, "width", "w")
+                fh = num(pocket, "height", "h")
+                if fw > 0 and fh > 0:
+                    c.setFillColor(colors.HexColor("#FFE8BF"))
+                    c.setStrokeColor(colors.HexColor("#CC7A00"))
+                    c.rect(px + fx * scale, py + (part["height"] - fy - fh) * scale, fw * scale, fh * scale, fill=1, stroke=1)
+
+            for hole in feature_items(part, ("drill_points", "holes", "joinery_holes", "connector_holes")):
+                hx = num(hole, "x", "center_x", "cx")
+                hy = num(hole, "y", "center_y", "cy")
+                dia = max(1, num(hole, "diameter", "dia", "d", default=5))
+                c.setFillColor(colors.white)
+                c.setStrokeColor(colors.HexColor("#005BFF"))
+                c.circle(px + hx * scale, py + (part["height"] - hy) * scale, max(1.2, dia * scale / 2), fill=1, stroke=1)
+
             c.setFillColor(colors.black)
             c.setFont("Helvetica", 6)
             label = f"{part['name']} ({part['width']}x{part['height']})"
@@ -2572,12 +2721,15 @@ def generate_pdf_bytes(parts: List[Dict], nesting: NestingResult, params: Design
     c.setFillColor(colors.black)
 
     columns = [
-        ("#", 10 * mm),
-        ("Part Name", 68 * mm),
-        ("Width", 24 * mm),
-        ("Height", 24 * mm),
-        ("Sheet", 18 * mm),
-        ("Rotated", 22 * mm),
+        ("#", 9 * mm),
+        ("Part Name", 58 * mm),
+        ("W", 18 * mm),
+        ("H", 18 * mm),
+        ("Sheet", 16 * mm),
+        ("Rot", 14 * mm),
+        ("Drill", 16 * mm),
+        ("Inside", 16 * mm),
+        ("Pocket", 17 * mm),
     ]
     x_positions = [margin]
     for _, width in columns[:-1]:
@@ -2596,9 +2748,9 @@ def generate_pdf_bytes(parts: List[Dict], nesting: NestingResult, params: Design
         c.setStrokeColor(colors.HexColor("#DDDDDD"))
         c.rect(margin, y - row_h + 1, sum(width for _, width in columns), row_h, fill=1, stroke=1)
         c.setFillColor(colors.black)
-        c.setFont("Helvetica-Bold" if bold else "Helvetica", 8)
+        c.setFont("Helvetica-Bold" if bold else "Helvetica", 7)
         for idx, value in enumerate(values):
-            c.drawString(x_positions[idx] + 2 * mm, y - 5.5 * mm, str(value))
+            c.drawString(x_positions[idx] + 1 * mm, y - 5.5 * mm, str(value)[:34])
         y -= row_h
 
     draw_row([label for label, _ in columns], bold=True)
@@ -2609,7 +2761,10 @@ def generate_pdf_bytes(parts: List[Dict], nesting: NestingResult, params: Design
             part["width"],
             part["height"],
             part.get("sheet", 0) + 1,
-            "Yes" if part.get("rotated") else "No",
+            "Y" if part.get("rotated") else "N",
+            feature_count(part, ("drill_points", "holes", "joinery_holes", "connector_holes")),
+            feature_count(part, ("cutouts", "inside_profiles", "internal_profiles", "internal_cutouts")),
+            feature_count(part, ("pockets", "rebates", "trays", "pocket_features", "recesses")),
         ])
 
     c.save()
