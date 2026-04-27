@@ -4442,6 +4442,78 @@ async def generate_export_files(export_req: ExportRequest, request: Request):
         "message": "Export files generated successfully. Files expire in 24 hours.",
     }
 
+
+@exports_router.get("/history")
+async def get_export_history(request: Request, limit: int = 25):
+    """Return recent export archive records for the signed-in user."""
+    user = await get_current_user(request)
+
+    safe_limit = max(1, min(int(limit or 25), 100))
+
+    cursor = (
+        db.exports
+        .find(
+            {"user_id": user["id"]},
+            {
+                "_id": 0,
+                "export_id": 1,
+                "design_name": 1,
+                "bundle": 1,
+                "bundle_label": 1,
+                "files": 1,
+                "created_at": 1,
+                "expires_at": 1,
+                "params": 1,
+                "cnc_config": 1,
+            },
+        )
+        .sort("created_at", -1)
+        .limit(safe_limit)
+    )
+
+    exports = await cursor.to_list(safe_limit)
+
+    now = datetime.now(timezone.utc)
+    records = []
+
+    for item in exports:
+        files = item.get("files") or {}
+        created_at = item.get("created_at")
+        expires_at = item.get("expires_at")
+
+        expired = False
+        if expires_at:
+            try:
+                expired = expires_at < now
+            except TypeError:
+                expired = False
+
+        records.append({
+            "export_id": item.get("export_id"),
+            "design_name": item.get("design_name", "UltimateDesk Design"),
+            "bundle": item.get("bundle", "unknown"),
+            "bundle_label": item.get("bundle_label", item.get("bundle", "Export bundle")),
+            "file_types": sorted(list(files.keys())),
+            "download_urls": files,
+            "created_at": created_at.isoformat() if hasattr(created_at, "isoformat") else created_at,
+            "expires_at": expires_at.isoformat() if hasattr(expires_at, "isoformat") else expires_at,
+            "expired": expired,
+            "width": (item.get("params") or {}).get("width"),
+            "depth": (item.get("params") or {}).get("depth"),
+            "height": (item.get("params") or {}).get("height"),
+            "has_gcode": "gcode" in files,
+            "has_pdf": "pdf" in files,
+            "has_dxf": "dxf" in files,
+            "has_svg": "svg" in files,
+        })
+
+    return {
+        "count": len(records),
+        "limit": safe_limit,
+        "exports": records,
+    }
+
+
 @exports_router.get("/download/{export_id}/{file_type}")
 async def download_export_file(export_id: str, file_type: str, request: Request):
     """Download a specific export file"""
