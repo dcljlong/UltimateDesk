@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { 
@@ -63,6 +63,12 @@ const defaultParams = {
   leg_style: 'standard',
   joint_type: 'finger',
   material_thickness: 18,
+  desktop_overhang: 30,
+  modesty_panel_style: 'standard',
+  cable_cutout_style: 'rear_center',
+  cable_tray_style: 'standard',
+  accessory_side: 'right',
+  finish_notes: [],
   is_oversize: false,
   desktop_split_count: 1,
   requires_centre_support: false,

@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import { motion } from 'framer-motion';
 import { 
   Sliders, 
@@ -19,8 +19,44 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs'
 
 const ConfigPanel = ({ params, onParamsUpdate, className = '' }) => {
   const updateParam = (key, value) => {
-    onParamsUpdate({ ...params, [key]: value });
+    const next = { ...params, [key]: value };
+
+    if (key === 'desk_type') {
+      if (value === 'heavy_duty_oversize') {
+        next.width = Math.max(Number(params.width || 2600), 2600);
+        next.is_oversize = true;
+        next.desktop_split_count = 2;
+        next.requires_centre_support = true;
+        next.cable_tray_style = next.cable_tray_style || 'premium';
+      } else if (Number(next.width || 0) <= 2400) {
+        next.is_oversize = false;
+        next.desktop_split_count = 1;
+        next.requires_centre_support = false;
+      }
+    }
+
+    if (key === 'width') {
+      if (Number(value) > 2400) {
+        next.is_oversize = true;
+        next.desktop_split_count = 2;
+        next.requires_centre_support = true;
+      } else if (next.desk_type !== 'heavy_duty_oversize') {
+        next.is_oversize = false;
+        next.desktop_split_count = 1;
+        next.requires_centre_support = false;
+      }
+    }
+
+    onParamsUpdate(next);
   };
+
+  const deskTypeOptions = [
+    { value: 'standard_office', label: 'Standard Office' },
+    { value: 'executive', label: 'Executive' },
+    { value: 'creator_studio', label: 'Creator Studio' },
+    { value: 'gaming', label: 'Gaming' },
+    { value: 'heavy_duty_oversize', label: 'Heavy Duty Oversize' },
+  ];
 
   return (
     <div className={`h-full overflow-auto ${className}`}>
@@ -49,14 +85,14 @@ const ConfigPanel = ({ params, onParamsUpdate, className = '' }) => {
                 value={[params.width]}
                 onValueChange={([v]) => updateParam('width', v)}
                 min={1200}
-                max={2400}
+                max={3000}
                 step={50}
                 className="neu-surface"
                 data-testid="slider-width"
               />
               <div className="flex justify-between text-xs text-[var(--text-secondary)] mt-1">
                 <span>1200mm</span>
-                <span>2400mm</span>
+                <span>3000mm</span>
               </div>
             </div>
 
@@ -97,6 +133,31 @@ const ConfigPanel = ({ params, onParamsUpdate, className = '' }) => {
                 <span>800mm</span>
               </div>
             </div>
+
+            <div>
+              <div className="flex justify-between mb-2">
+                <Label>Desktop Overhang</Label>
+                <span className="text-sm font-mono text-[var(--text-secondary)]">{params.desktop_overhang ?? 30}mm</span>
+              </div>
+              <Slider
+                value={[params.desktop_overhang ?? 30]}
+                onValueChange={([v]) => updateParam('desktop_overhang', v)}
+                min={0}
+                max={120}
+                step={5}
+                data-testid="slider-desktop-overhang"
+              />
+              <div className="flex justify-between text-xs text-[var(--text-secondary)] mt-1">
+                <span>Flush</span>
+                <span>120mm</span>
+              </div>
+            </div>
+
+            {params.is_oversize && (
+              <div className="rounded-lg border border-yellow-500/40 bg-yellow-500/10 p-3 text-xs text-yellow-700 dark:text-yellow-300">
+                Oversize split-top mode: 2 desktop panels with centre support.
+              </div>
+            )}
 
           </div>
         </TabsContent>
@@ -206,6 +267,74 @@ const ConfigPanel = ({ params, onParamsUpdate, className = '' }) => {
                 data-testid="switch-vesa"
               />
             </div>
+
+            <div>
+              <Label className="mb-2 block">Modesty Panel</Label>
+              <Select
+                value={params.modesty_panel_style || 'standard'}
+                onValueChange={(v) => updateParam('modesty_panel_style', v)}
+              >
+                <SelectTrigger className="neu-surface" data-testid="select-modesty-panel">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">None</SelectItem>
+                  <SelectItem value="standard">Standard</SelectItem>
+                  <SelectItem value="privacy">Privacy</SelectItem>
+                  <SelectItem value="executive">Executive Privacy</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label className="mb-2 block">Cable Cutout</Label>
+              <Select
+                value={params.cable_cutout_style || 'rear_center'}
+                onValueChange={(v) => updateParam('cable_cutout_style', v)}
+              >
+                <SelectTrigger className="neu-surface" data-testid="select-cable-cutout">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="rear_center">Rear Centre</SelectItem>
+                  <SelectItem value="dual_grommet">Dual Grommet</SelectItem>
+                  <SelectItem value="long_slot">Long Rear Slot</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label className="mb-2 block">Cable Tray</Label>
+              <Select
+                value={params.cable_tray_style || 'standard'}
+                onValueChange={(v) => updateParam('cable_tray_style', v)}
+              >
+                <SelectTrigger className="neu-surface" data-testid="select-cable-tray">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">None</SelectItem>
+                  <SelectItem value="standard">Standard</SelectItem>
+                  <SelectItem value="premium">Premium</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label className="mb-2 block">Accessory Side</Label>
+              <Select
+                value={params.accessory_side || 'right'}
+                onValueChange={(v) => updateParam('accessory_side', v)}
+              >
+                <SelectTrigger className="neu-surface" data-testid="select-accessory-side">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="left">Left</SelectItem>
+                  <SelectItem value="right">Right</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </TabsContent>
 
@@ -214,21 +343,21 @@ const ConfigPanel = ({ params, onParamsUpdate, className = '' }) => {
           <div className="space-y-4">
             <div>
               <Label className="mb-2 block">Desk Type</Label>
-              <div className="flex gap-2">
-  {['gaming','studio','office'].map((t) => (
-    <button
-      key={t}
-      onClick={() => updateParam('desk_type', t)}
-      className={`px-3 py-2 rounded-lg border transition-all text-sm font-bold uppercase ${
-        params.desk_type === t
-          ? 'bg-red-600 text-white border-red-600 ring-2 ring-red-400'
-          : 'bg-neutral-800 text-gray-300 border-neutral-700 hover:border-red-400'
-      }`}
-    >
-      {params.desk_type === t ? '✓ ' : ''}{t}
-    </button>
-  ))}
-</div>
+              <div className="grid grid-cols-1 gap-2">
+                {deskTypeOptions.map((option) => (
+                  <button
+                    key={option.value}
+                    onClick={() => updateParam('desk_type', option.value)}
+                    className={`px-3 py-2 rounded-lg border transition-all text-sm font-bold text-left ${
+                      params.desk_type === option.value
+                        ? 'bg-red-600 text-white border-red-600 ring-2 ring-red-400'
+                        : 'bg-neutral-800 text-gray-300 border-neutral-700 hover:border-red-400'
+                    }`}
+                  >
+                    {params.desk_type === option.value ? '✓ ' : ''}{option.label}
+                  </button>
+                ))}
+              </div>
             </div>
 
             <div className="neu-surface p-4 rounded-xl">
