@@ -2971,6 +2971,212 @@ def generate_review_drawing_pdf_bytes(params: DesignParams, design_name: str = "
         dim_line(x0, y0 - 10 * mm, x0 + w, y0 - 10 * mm, f"{int(depth)}mm depth", offset=3 * mm)
         dim_line(x0 - 10 * mm, y0, x0 - 10 * mm, y0 + h, f"{int(height)}mm high", offset=3 * mm)
 
+    def draw_isometric_assembly_page():
+        c.showPage()
+        draw_header(f"{design_name} - Isometric Assembly View", "Design Review Drawings")
+        draw_note_box(page_height - margin - 18 * mm, "Isometric view is for assembly review and design understanding. Check exact manufacture from CNC exports and schedules.")
+
+        draw_area_x = margin + 8 * mm
+        draw_area_y = margin + 22 * mm
+        draw_area_w = page_width - 2 * margin - 16 * mm
+        draw_area_h = page_height - 2 * margin - 82 * mm
+
+        # Conservative scale so wide/deep desks fit the page.
+        iso_extent_w = (width + depth) * 0.72
+        iso_extent_h = ((width + depth) * 0.30) + height * 0.72
+        scale = min(draw_area_w / max(1, iso_extent_w), draw_area_h / max(1, iso_extent_h))
+
+        origin_x = page_width / 2
+        origin_y = draw_area_y + 18 * mm
+
+        def iso_project(x, y, z):
+            px = origin_x + (x - y) * 0.72 * scale
+            py = origin_y + (x + y) * 0.30 * scale + z * 0.72 * scale
+            return px, py
+
+        def poly(points, fill, stroke="#333333", line_width=0.7):
+            c.setFillColor(colors.HexColor(fill))
+            c.setStrokeColor(colors.HexColor(stroke))
+            c.setLineWidth(line_width)
+            if not points:
+                return
+
+            path_obj = c.beginPath()
+            first_x, first_y = points[0]
+            path_obj.moveTo(first_x, first_y)
+            for point_x, point_y in points[1:]:
+                path_obj.lineTo(point_x, point_y)
+            path_obj.close()
+            c.drawPath(path_obj, fill=1, stroke=1)
+
+        def draw_iso_box(x, y, z, w, d, h, label="", fill_top="#FFFFFF", fill_left="#EFEFEF", fill_right="#DDDDDD", stroke="#333333"):
+            p000 = iso_project(x, y, z)
+            p100 = iso_project(x + w, y, z)
+            p110 = iso_project(x + w, y + d, z)
+            p010 = iso_project(x, y + d, z)
+
+            p001 = iso_project(x, y, z + h)
+            p101 = iso_project(x + w, y, z + h)
+            p111 = iso_project(x + w, y + d, z + h)
+            p011 = iso_project(x, y + d, z + h)
+
+            # Visible faces: front/left, right, top.
+            poly([p000, p100, p101, p001], fill_left, stroke)
+            poly([p100, p110, p111, p101], fill_right, stroke)
+            poly([p001, p101, p111, p011], fill_top, stroke)
+
+            if label:
+                lx, ly = iso_project(x + w / 2, y + d / 2, z + h + 10)
+                c.setFillColor(colors.black)
+                c.setFont("Helvetica", 7)
+                c.drawCentredString(lx, ly, label[:46])
+
+        # Main assembly geometry.
+        desktop_z = height - thickness
+        draw_iso_box(
+            0, 0, desktop_z,
+            width, depth, thickness,
+            "Desktop",
+            fill_top="#FFFFFF",
+            fill_left="#F3F3F3",
+            fill_right="#E4E4E4",
+            stroke="#111111",
+        )
+
+        # Legs.
+        leg_positions = [
+            (leg_inset_x, leg_inset_y, "FL"),
+            (width - leg_inset_x - leg_size, leg_inset_y, "FR"),
+            (leg_inset_x, depth - leg_inset_y - leg_size, "RL"),
+            (width - leg_inset_x - leg_size, depth - leg_inset_y - leg_size, "RR"),
+        ]
+        for lx, ly, label in leg_positions:
+            draw_iso_box(
+                lx, ly, 0,
+                leg_size, leg_size, desktop_z,
+                f"Leg {label}",
+                fill_top="#DDEBFF",
+                fill_left="#CFE2FF",
+                fill_right="#BBD5FF",
+                stroke="#005BFF",
+            )
+
+        # Rear upper rail and front/lower rail zones.
+        rail_x = leg_inset_x + leg_size
+        rear_y = depth - leg_inset_y - leg_size
+        front_y = leg_inset_y
+        draw_iso_box(
+            rail_x, rear_y, max(0, desktop_z - 65),
+            clear_span_x, 30, 42,
+            "Rear upper rail",
+            fill_top="#F7F7F7",
+            fill_left="#E8E8E8",
+            fill_right="#DADADA",
+            stroke="#555555",
+        )
+        draw_iso_box(
+            rail_x, front_y, 110,
+            clear_span_x, 30, 30,
+            "Front lower rail",
+            fill_top="#F7F7F7",
+            fill_left="#E8E8E8",
+            fill_right="#DADADA",
+            stroke="#555555",
+        )
+
+        # Side rails.
+        side_span_y = clear_span_y
+        left_x = leg_inset_x
+        right_x = width - leg_inset_x - leg_size
+        side_y = leg_inset_y + leg_size
+        draw_iso_box(
+            left_x, side_y, 120,
+            30, side_span_y, 30,
+            "Left side rail",
+            fill_top="#F7F7F7",
+            fill_left="#E8E8E8",
+            fill_right="#DADADA",
+            stroke="#555555",
+        )
+        draw_iso_box(
+            right_x, side_y, 120,
+            30, side_span_y, 30,
+            "Right side rail",
+            fill_top="#F7F7F7",
+            fill_left="#E8E8E8",
+            fill_right="#DADADA",
+            stroke="#555555",
+        )
+
+        if params.has_cable_management:
+            tray_w = max(500, min(width - (leg_inset_x * 2) - 120, int(width * 0.60)))
+            tray_x = (width - tray_w) / 2
+            tray_y = depth - 150
+            draw_iso_box(
+                tray_x, tray_y, max(90, desktop_z - 170),
+                tray_w, 85, 40,
+                "Cable tray",
+                fill_top="#E8FFF0",
+                fill_left="#D8F5E1",
+                fill_right="#C5EACF",
+                stroke="#0B7A35",
+            )
+
+        if params.has_mixer_tray:
+            mixer_w = max(280, min(int(params.mixer_tray_width or 520), clear_span_x))
+            mixer_x = (width - mixer_w) / 2
+            draw_iso_box(
+                mixer_x, 95, max(80, desktop_z - 160),
+                mixer_w, 170, 35,
+                "Mixer tray",
+                fill_top="#FFF0D8",
+                fill_left="#FFE5BD",
+                fill_right="#FFD49A",
+                stroke="#CC7A00",
+            )
+
+        if params.has_headset_hook:
+            hook_x = width - leg_inset_x - 90
+            hook_y = 30
+            draw_iso_box(
+                hook_x, hook_y, desktop_z - 80,
+                90, 30, 22,
+                "Headset hook",
+                fill_top="#F1E6FF",
+                fill_left="#E5D2FF",
+                fill_right="#D3B6FF",
+                stroke="#7A2DCC",
+            )
+
+        if params.has_vesa_mount:
+            vesa_x = width / 2 - 90
+            vesa_y = depth - 210
+            draw_iso_box(
+                vesa_x, vesa_y, desktop_z + thickness,
+                180, 100, 120,
+                "VESA mount zone",
+                fill_top="#F1E6FF",
+                fill_left="#E5D2FF",
+                fill_right="#D3B6FF",
+                stroke="#7A2DCC",
+            )
+
+        # Assembly notes / legend.
+        legend_x = margin
+        legend_y = margin + 5 * mm
+        c.setFillColor(colors.HexColor("#333333"))
+        c.setFont("Helvetica-Bold", 8)
+        c.drawString(legend_x, legend_y + 12 * mm, "Assembly review notes")
+        c.setFont("Helvetica", 7)
+        notes = [
+            f"Overall: {int(width)}W x {int(depth)}D x {int(height)}H mm",
+            f"Material: {int(thickness)}mm, sheets required: {nesting.sheets_required}",
+            f"Parts: {len(nesting.parts)}, drill features: {drill_total}, inside cuts: {inside_total}, pockets/rebates: {pocket_total}",
+            "View is schematic: verify final parts, holes, rebates, and machine file in CNC/CAM outputs.",
+        ]
+        for idx, note in enumerate(notes):
+            c.drawString(legend_x, legend_y + (7 - idx) * mm, f"- {note}")
+
     def draw_parts_and_feature_schedule():
         c.showPage()
         draw_header(f"{design_name} - Review Schedule", "Design Review Drawings")
@@ -3048,6 +3254,7 @@ def generate_review_drawing_pdf_bytes(params: DesignParams, design_name: str = "
     draw_plan_page()
     draw_front_elevation()
     draw_side_elevation()
+    draw_isometric_assembly_page()
     draw_parts_and_feature_schedule()
 
     c.save()
