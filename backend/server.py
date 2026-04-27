@@ -3384,6 +3384,229 @@ def generate_review_drawing_pdf_bytes(params: DesignParams, design_name: str = "
             c.drawString(margin + 4 * mm, y, f"- {item}")
             y -= 5 * mm
 
+    def draw_part_marking_page():
+        c.showPage()
+        draw_header(f"{design_name} - Part Marking / Orientation", "Manufacturing Instructions")
+        draw_note_box(page_height - margin - 18 * mm, "Mark each part after CNC cutting. Orientation marks help avoid flipped, reversed, or handed assembly mistakes.")
+
+        y = page_height - margin - 42 * mm
+
+        def infer_orientation(part_name):
+            name = str(part_name).lower()
+
+            front_edge = "Mark visible/front edge where applicable"
+            back_edge = "Mark rear/back edge where applicable"
+            left_edge = "Mark left edge from user position"
+            right_edge = "Mark right edge from user position"
+            note = "Confirm orientation before drilling or final fixing"
+
+            if "desktop" in name or "top" in name:
+                front_edge = "Long front user edge"
+                back_edge = "Rear cable/accessory edge"
+                left_edge = "Left side from seated/user position"
+                right_edge = "Right side from seated/user position"
+                note = "Transfer FRONT/BACK/LEFT/RIGHT marks before removing from sheet"
+
+            elif "rear" in name or "back" in name:
+                front_edge = "Face toward user/front"
+                back_edge = "Rear/back face"
+                left_edge = "Left end to left rear leg/frame"
+                right_edge = "Right end to right rear leg/frame"
+                note = "Keep rear-facing parts grouped together"
+
+            elif "front" in name:
+                front_edge = "Visible/front face"
+                back_edge = "Inside frame face"
+                left_edge = "Left end from user position"
+                right_edge = "Right end from user position"
+                note = "Front rail must not be reversed"
+
+            elif "left" in name:
+                front_edge = "Front end"
+                back_edge = "Rear end"
+                left_edge = "Outside left face"
+                right_edge = "Inside face"
+                note = "Handed left-side part"
+
+            elif "right" in name:
+                front_edge = "Front end"
+                back_edge = "Rear end"
+                left_edge = "Inside face"
+                right_edge = "Outside right face"
+                note = "Handed right-side part"
+
+            elif "leg post fl" in name:
+                front_edge = "Front face"
+                back_edge = "Inside/rear face"
+                left_edge = "Left/outside face"
+                right_edge = "Inside/right face"
+                note = "Front-left leg post"
+
+            elif "leg post fr" in name:
+                front_edge = "Front face"
+                back_edge = "Inside/rear face"
+                left_edge = "Inside/left face"
+                right_edge = "Right/outside face"
+                note = "Front-right leg post"
+
+            elif "leg post rl" in name:
+                front_edge = "Inside/front face"
+                back_edge = "Rear face"
+                left_edge = "Left/outside face"
+                right_edge = "Inside/right face"
+                note = "Rear-left leg post"
+
+            elif "leg post rr" in name:
+                front_edge = "Inside/front face"
+                back_edge = "Rear face"
+                left_edge = "Inside/left face"
+                right_edge = "Right/outside face"
+                note = "Rear-right leg post"
+
+            elif "cable tray" in name:
+                front_edge = "Tray front/user side"
+                back_edge = "Tray rear/cable side"
+                left_edge = "Left end"
+                right_edge = "Right end"
+                note = "Keep cable tray parts bundled together"
+
+            elif "mixer" in name:
+                front_edge = "Mixer access/user side"
+                back_edge = "Rear support side"
+                left_edge = "Left support side"
+                right_edge = "Right support side"
+                note = "Confirm mixer tray width and rebate orientation"
+
+            elif "vesa" in name:
+                front_edge = "Monitor/front side"
+                back_edge = "Rear support side"
+                left_edge = "Left from user position"
+                right_edge = "Right from user position"
+                note = "Confirm load-rated mounting hardware"
+
+            elif "headset" in name or "hook" in name:
+                front_edge = "User access side"
+                back_edge = "Fixing side"
+                left_edge = "Left if mounted left"
+                right_edge = "Right if mounted right"
+                note = "Confirm handed side before fixing"
+
+            return front_edge, back_edge, left_edge, right_edge, note
+
+        def draw_table(headers, rows, col_widths):
+            nonlocal y
+            row_h = 7 * mm
+            total_w = sum(col_widths)
+
+            def draw_one_row(values, bold=False, fill="#FFFFFF"):
+                nonlocal y
+                if y < 25 * mm:
+                    c.showPage()
+                    draw_header(f"{design_name} - Part Marking / Orientation", "continued")
+                    y = page_height - margin - 20 * mm
+
+                c.setFillColor(colors.HexColor(fill))
+                c.setStrokeColor(colors.HexColor("#DDDDDD"))
+                c.rect(margin, y - row_h + 1, total_w, row_h, fill=1, stroke=1)
+
+                c.setFillColor(colors.black)
+                c.setFont("Helvetica-Bold" if bold else "Helvetica", 6.2)
+                x = margin
+                for value, col_w in zip(values, col_widths):
+                    c.drawString(x + 1 * mm, y - 4.9 * mm, str(value)[:36])
+                    x += col_w
+                y -= row_h
+
+            draw_one_row(headers, bold=True, fill="#F3F3F3")
+            for row in rows:
+                draw_one_row(row)
+
+            y -= 4 * mm
+
+        c.setFillColor(colors.black)
+        c.setFont("Helvetica-Bold", 10)
+        c.drawString(margin, y, "Part marking legend")
+        y -= 7 * mm
+
+        legend_lines = [
+            "Mark every cut part before sanding or assembly: ID, FRONT, BACK, LEFT, RIGHT, and visible face where relevant.",
+            "Use seated/user position as the reference direction for LEFT and RIGHT.",
+            "Keep handed parts grouped: FL, FR, RL, RR, Left Side, Right Side.",
+            "Do not rely on board nesting position as final orientation after parts are removed from the sheet.",
+        ]
+
+        c.setFont("Helvetica", 7.3)
+        for line in legend_lines:
+            c.drawString(margin + 4 * mm, y, f"- {line}")
+            y -= 5 * mm
+
+        y -= 4 * mm
+
+        rows = []
+        for idx, part in enumerate(nesting.parts, start=1):
+            part_name = part["name"]
+            front_edge, back_edge, left_edge, right_edge, note = infer_orientation(part_name)
+            mark_id = f"P{idx:02d}"
+            rows.append((
+                mark_id,
+                part_name,
+                f"{part.get('sheet', 0) + 1}",
+                front_edge,
+                back_edge,
+                left_edge,
+                right_edge,
+                note,
+            ))
+
+        draw_table(
+            ["ID", "Part", "Sheet", "Front mark", "Back mark", "Left mark", "Right mark", "Note"],
+            rows,
+            [10 * mm, 40 * mm, 12 * mm, 33 * mm, 33 * mm, 30 * mm, 30 * mm, 56 * mm],
+        )
+
+    def draw_cut_part_labels_page():
+        c.showPage()
+        draw_header(f"{design_name} - Cut Part Labels", "Manufacturing Instructions")
+        draw_note_box(page_height - margin - 18 * mm, "Use these labels as a shop-floor marking guide after cutting. Apply labels before parts are moved or stacked.")
+
+        y = page_height - margin - 42 * mm
+        label_w = (page_width - 2 * margin - 10 * mm) / 2
+        label_h = 22 * mm
+        gap = 5 * mm
+        x_positions = [margin, margin + label_w + gap]
+        col = 0
+
+        for idx, part in enumerate(nesting.parts, start=1):
+            if y - label_h < 20 * mm:
+                c.showPage()
+                draw_header(f"{design_name} - Cut Part Labels", "continued")
+                y = page_height - margin - 20 * mm
+                col = 0
+
+            x = x_positions[col]
+            c.setFillColor(colors.HexColor("#F7F7F7"))
+            c.setStrokeColor(colors.HexColor("#BBBBBB"))
+            c.roundRect(x, y - label_h, label_w, label_h, 2 * mm, fill=1, stroke=1)
+
+            mark_id = f"P{idx:02d}"
+            c.setFillColor(colors.HexColor("#FF3B30"))
+            c.setFont("Helvetica-Bold", 11)
+            c.drawString(x + 3 * mm, y - 6 * mm, mark_id)
+
+            c.setFillColor(colors.black)
+            c.setFont("Helvetica-Bold", 7.2)
+            c.drawString(x + 18 * mm, y - 5.5 * mm, str(part["name"])[:42])
+
+            c.setFont("Helvetica", 6.7)
+            c.drawString(x + 3 * mm, y - 11 * mm, f"Size: {part['width']} x {part['height']} mm | Sheet {part.get('sheet', 0) + 1}")
+            c.drawString(x + 3 * mm, y - 15.5 * mm, "Mark: FRONT / BACK / LEFT / RIGHT before sanding")
+            c.drawString(x + 3 * mm, y - 20 * mm, "Visible face: confirm before final assembly")
+
+            col += 1
+            if col > 1:
+                col = 0
+                y -= label_h + gap
+
     def draw_parts_and_feature_schedule():
         c.showPage()
         draw_header(f"{design_name} - Review Schedule", "Design Review Drawings")
@@ -3464,6 +3687,8 @@ def generate_review_drawing_pdf_bytes(params: DesignParams, design_name: str = "
     draw_isometric_assembly_page()
     draw_assembly_details_page()
     draw_hardware_schedule_page()
+    draw_part_marking_page()
+    draw_cut_part_labels_page()
     draw_parts_and_feature_schedule()
 
     c.save()
