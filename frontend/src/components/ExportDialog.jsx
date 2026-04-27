@@ -126,6 +126,13 @@ const ExportDialog = ({ isOpen, onClose, params, designName }) => {
     willVerifyInCam: false,
   });
 
+  const requiresCncConfirmation = includedFiles.includes('gcode');
+  const cncSafetyReady = !requiresCncConfirmation || (
+    cncSafetyConfirmed.reviewedDrawings &&
+    cncSafetyConfirmed.checkedMachineSettings &&
+    cncSafetyConfirmed.willVerifyInCam
+  );
+
   // Load bundle catalog once
   useEffect(() => {
     if (!isOpen) return;
@@ -331,12 +338,6 @@ const ExportDialog = ({ isOpen, onClose, params, designName }) => {
 
   const bundles = useMemo(() => catalog?.bundles || [], [catalog]);
   const includedFiles = useMemo(() => {
-  const requiresCncConfirmation = includedFiles.includes('gcode');
-  const cncSafetyReady = !requiresCncConfirmation || (
-    cncSafetyConfirmed.reviewedDrawings &&
-    cncSafetyConfirmed.checkedMachineSettings &&
-    cncSafetyConfirmed.willVerifyInCam
-  );
     const b = bundles.find((x) => x.key === bundle);
     return b?.files || ['dxf'];
   }, [bundles, bundle]);
