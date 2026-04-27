@@ -1,7 +1,7 @@
 ﻿# UltimateDesk Manufacturing Pack V1 QA Checklist
 
 Status: PASSED  
-Generated: 2026-04-27 20:56:05  
+Generated: 2026-04-27 21:03:50  
 Target tag: manufacturing-pack-v1
 
 ## Automated PowerShell QA Results
@@ -25,3 +25,13 @@ Target tag: manufacturing-pack-v1
 ## Release note
 
 Only push/tag manufacturing-pack-v1 after all automated checks pass and the live proof is confirmed.
+
+## Live proof
+
+- [x] Render deployed successfully
+- [x] Live /api/review-drawings/pdf generated PDF
+- [x] Live Manufacturing Pack V1 PDF size: 41,074 bytes
+- [x] Live PDF proof file: UltimateDesk_live_manufacturing_pack_v1_test.pdf
+- [x] Milestone head before final tag: fcc3e86
+- [x] Safety gate remains parked
+
