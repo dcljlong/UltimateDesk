@@ -4478,6 +4478,22 @@ async def get_export_history(request: Request, limit: int = 25):
 
     for item in exports:
         files = item.get("files") or {}
+        export_id = item.get("export_id")
+        bundle = item.get("bundle", "unknown")
+
+        # Older export records may not have a persisted files map.
+        # Reconstruct file URLs from the export_id + bundle because the download
+        # endpoint already resolves files by export_id/file_type.
+        if not files and export_id:
+            bundle_file_map = {
+                "dxf": ["dxf"],
+                "dxf_svg": ["dxf", "svg"],
+                "dxf_gcode": ["dxf", "gcode"],
+                "full_pack": ["dxf", "svg", "gcode", "pdf"],
+            }
+            for file_type in bundle_file_map.get(bundle, []):
+                files[file_type] = f"/api/exports/download/{export_id}/{file_type}"
+
         created_at = item.get("created_at")
         expires_at = item.get("expires_at")
 
@@ -4489,9 +4505,9 @@ async def get_export_history(request: Request, limit: int = 25):
                 expired = False
 
         records.append({
-            "export_id": item.get("export_id"),
+            "export_id": export_id,
             "design_name": item.get("design_name", "UltimateDesk Design"),
-            "bundle": item.get("bundle", "unknown"),
+            "bundle": bundle,
             "bundle_label": item.get("bundle_label", item.get("bundle", "Export bundle")),
             "file_types": sorted(list(files.keys())),
             "download_urls": files,
