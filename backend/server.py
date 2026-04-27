@@ -3177,6 +3177,213 @@ def generate_review_drawing_pdf_bytes(params: DesignParams, design_name: str = "
         for idx, note in enumerate(notes):
             c.drawString(legend_x, legend_y + (7 - idx) * mm, f"- {note}")
 
+    def draw_assembly_details_page():
+        c.showPage()
+        draw_header(f"{design_name} - Assembly Details", "Manufacturing Instructions")
+        draw_note_box(page_height - margin - 18 * mm, "Assembly details are manufacturing instructions only. CNC geometry remains controlled by DXF/NC exports.")
+
+        y = page_height - margin - 42 * mm
+
+        def section_title(title):
+            nonlocal y
+            c.setFillColor(colors.HexColor("#111111"))
+            c.setFont("Helvetica-Bold", 10)
+            c.drawString(margin, y, title)
+            y -= 7 * mm
+
+        def wrapped_line(text, indent=0, size=7.5, step=4.8 * mm):
+            nonlocal y
+            if y < 22 * mm:
+                c.showPage()
+                draw_header(f"{design_name} - Assembly Details", "continued")
+                y = page_height - margin - 20 * mm
+
+            c.setFillColor(colors.HexColor("#333333"))
+            c.setFont("Helvetica", size)
+
+            max_chars = 138 - indent
+            remaining = str(text)
+            first = True
+            while remaining:
+                chunk = remaining[:max_chars]
+                if len(remaining) > max_chars:
+                    split_at = max(chunk.rfind(" "), 60)
+                    chunk = remaining[:split_at]
+                    remaining = remaining[split_at:].strip()
+                else:
+                    remaining = ""
+
+                prefix = "" if first else "  "
+                c.drawString(margin + indent * mm, y, prefix + chunk)
+                y -= step
+                first = False
+
+        def draw_table(headers, rows, col_widths):
+            nonlocal y
+            row_h = 7 * mm
+            total_w = sum(col_widths)
+
+            def draw_one_row(values, bold=False, fill="#FFFFFF"):
+                nonlocal y
+                if y < 25 * mm:
+                    c.showPage()
+                    draw_header(f"{design_name} - Assembly Details", "continued")
+                    y = page_height - margin - 20 * mm
+
+                c.setFillColor(colors.HexColor(fill))
+                c.setStrokeColor(colors.HexColor("#DDDDDD"))
+                c.rect(margin, y - row_h + 1, total_w, row_h, fill=1, stroke=1)
+
+                c.setFillColor(colors.black)
+                c.setFont("Helvetica-Bold" if bold else "Helvetica", 6.6)
+                x = margin
+                for value, col_w in zip(values, col_widths):
+                    c.drawString(x + 1.3 * mm, y - 4.9 * mm, str(value)[:42])
+                    x += col_w
+                y -= row_h
+
+            draw_one_row(headers, bold=True, fill="#F3F3F3")
+            for row in rows:
+                draw_one_row(row)
+
+            y -= 4 * mm
+
+        section_title("Part-to-part connection map")
+        connection_rows = [
+            ("Desktop Top", "Rear Upper Rail", "Underside rear fixing line", "pilot holes / screws", "Check cable cutout clearance first"),
+            ("Desktop Top", "Front Lower Rail", "Underside front fixing line", "pilot holes / screws", "Keep rail square before fixing"),
+            ("Rear Upper Rail", "Leg Post FL / FR / RL / RR", "Rail ends into leg posts", "screws / dowels / confirm hardware", "Pre-drill and clamp square"),
+            ("Front Lower Rail", "Leg Post FL / FR", "Front lower rail to front legs", "screws / dowels / confirm hardware", "Do not rack frame"),
+            ("Side Rails", "Front and rear leg posts", "Left/right frame sides", "screws / dowels / confirm hardware", "Confirm handed parts"),
+            ("Back Modesty Panel", "Rear rail / rear leg zone", "Rear face", "screws / pilot holes", "Fit after main frame is square"),
+        ]
+
+        if params.has_cable_management:
+            connection_rows.extend([
+                ("Cable Tray Base", "Cable Tray Front / Back", "Tray long edges", "small screws / pilot holes", "Assemble tray before final mounting"),
+                ("Cable Tray Assembly", "Desktop underside / rear rail zone", "Rear underside", "pilot holes / screws", "Keep clear of rear cable pass-through"),
+            ])
+
+        if params.has_mixer_tray:
+            connection_rows.extend([
+                ("Mixer Tray", "Mixer Tray Supports", "Left/right support cheeks", "pilot holes / screws", "Check mixer width and rebate depth"),
+                ("Mixer Tray Assembly", "Desktop underside", "Front underside zone", "pilot holes / screws", "Confirm slide/clearance before fixing"),
+            ])
+
+        if params.has_headset_hook:
+            connection_rows.append(("Headset Hook", "Desktop / side underside", "Chosen side", "pilot holes / screws", "Confirm user handedness"))
+
+        if params.has_vesa_mount:
+            connection_rows.append(("VESA Mount Plate", "Desktop / rear zone", "Rear top/under-top zone", "bolt/screw pattern", "Confirm monitor hardware and load"))
+
+        draw_table(
+            ["Part A", "Part B", "Joint location", "Fixing type", "Manufacturing note"],
+            connection_rows,
+            [38 * mm, 42 * mm, 38 * mm, 34 * mm, 92 * mm],
+        )
+
+        section_title("Recommended assembly order")
+        steps = [
+            "1. Identify all parts from the parts schedule and keep each sheet group together.",
+            "2. Lightly sand/clean CNC tabs and edges. Do not enlarge holes until hardware is confirmed.",
+            "3. Build the left and right leg frames first using leg posts and side/front/rear rails.",
+            "4. Dry-fit the rear upper rail, front lower rail, and side rails. Clamp square before permanent fixing.",
+            "5. Fit the desktop to the frame. Align rear edge, leg inset, cable openings, and rail fixing lines.",
+            "6. Fit the back modesty panel after the main frame is square.",
+            "7. Assemble and install the cable tray if selected.",
+            "8. Assemble and install mixer tray / VESA / headset / accessory parts if selected.",
+            "9. Check final level, squareness, cable access, hardware tightness, and edge finish.",
+        ]
+        for step in steps:
+            wrapped_line(step, indent=4)
+
+    def draw_hardware_schedule_page():
+        c.showPage()
+        draw_header(f"{design_name} - Hardware / Fastener Schedule", "Manufacturing Instructions")
+        draw_note_box(page_height - margin - 18 * mm, "Hardware schedule is indicative. Confirm final screw, bolt, dowel, insert, and load requirements before manufacture.")
+
+        y = page_height - margin - 42 * mm
+
+        def draw_table(headers, rows, col_widths):
+            nonlocal y
+            row_h = 7 * mm
+            total_w = sum(col_widths)
+
+            def draw_one_row(values, bold=False, fill="#FFFFFF"):
+                nonlocal y
+                if y < 25 * mm:
+                    c.showPage()
+                    draw_header(f"{design_name} - Hardware / Fastener Schedule", "continued")
+                    y = page_height - margin - 20 * mm
+
+                c.setFillColor(colors.HexColor(fill))
+                c.setStrokeColor(colors.HexColor("#DDDDDD"))
+                c.rect(margin, y - row_h + 1, total_w, row_h, fill=1, stroke=1)
+
+                c.setFillColor(colors.black)
+                c.setFont("Helvetica-Bold" if bold else "Helvetica", 6.7)
+                x = margin
+                for value, col_w in zip(values, col_widths):
+                    c.drawString(x + 1.2 * mm, y - 4.9 * mm, str(value)[:48])
+                    x += col_w
+                y -= row_h
+
+            draw_one_row(headers, bold=True, fill="#F3F3F3")
+            for row in rows:
+                draw_one_row(row)
+
+            y -= 5 * mm
+
+        c.setFillColor(colors.black)
+        c.setFont("Helvetica-Bold", 10)
+        c.drawString(margin, y, "Indicative hardware groups")
+        y -= 8 * mm
+
+        hardware_rows = [
+            ("Desktop to rails/frame", "Wood screws / confirm spec", "Per drill schedule", "Pilot drill only; avoid breakthrough through desktop"),
+            ("Rail to leg post joints", "Screws/dowels/cam/confirm hardware", "Per joint detail", "Clamp square; confirm edge distance"),
+            ("Back modesty panel", "Wood screws / confirm spec", "Per drill schedule", "Install after frame is square"),
+            ("Cable tray", "Small screws / confirm spec", "Per tray holes", "Keep clear of cable pass-through and grommets"),
+        ]
+
+        if params.has_mixer_tray:
+            hardware_rows.append(("Mixer tray", "Screws / inserts / confirm spec", "Per mixer tray holes", "Check rebate depth and mixer clearance"))
+
+        if params.has_headset_hook:
+            hardware_rows.append(("Headset hook", "Small screws / confirm spec", "2 fixing points typical", "Confirm handed side before drilling"))
+
+        if params.has_vesa_mount:
+            hardware_rows.append(("VESA mount", "Bolts/inserts/load-rated hardware", "VESA 100 pattern + supports", "Must be verified for monitor load"))
+
+        draw_table(
+            ["Connection", "Indicative hardware", "Quantity basis", "Critical check"],
+            hardware_rows,
+            [48 * mm, 52 * mm, 42 * mm, 102 * mm],
+        )
+
+        c.setFillColor(colors.black)
+        c.setFont("Helvetica-Bold", 10)
+        c.drawString(margin, y, "Manufacturing checks before cutting / assembly")
+        y -= 7 * mm
+
+        checks = [
+            "Confirm material thickness matches the quote, CNC config, and actual board thickness.",
+            "Confirm cutter diameter, compensation strategy, and hole diameters before machining.",
+            "Confirm edge orientation: front/back/left/right marks should be transferred to parts after cutting.",
+            "Confirm all accessory positions: cable tray, mixer tray, headset hook, VESA, GPU tray, pedal platform.",
+            "Confirm all tabs are removed and edges dressed before final assembly.",
+            "Do not rely on this schedule as structural certification. It is a manufacturing review aid.",
+        ]
+
+        c.setFont("Helvetica", 7.5)
+        for item in checks:
+            if y < 25 * mm:
+                c.showPage()
+                draw_header(f"{design_name} - Hardware / Fastener Schedule", "continued")
+                y = page_height - margin - 20 * mm
+            c.drawString(margin + 4 * mm, y, f"- {item}")
+            y -= 5 * mm
+
     def draw_parts_and_feature_schedule():
         c.showPage()
         draw_header(f"{design_name} - Review Schedule", "Design Review Drawings")
@@ -3255,6 +3462,8 @@ def generate_review_drawing_pdf_bytes(params: DesignParams, design_name: str = "
     draw_front_elevation()
     draw_side_elevation()
     draw_isometric_assembly_page()
+    draw_assembly_details_page()
+    draw_hardware_schedule_page()
     draw_parts_and_feature_schedule()
 
     c.save()
