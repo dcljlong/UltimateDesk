@@ -104,6 +104,12 @@ class DesignParams(BaseModel):
     leg_style: str = "standard"
     joint_type: str = "finger"
     material_thickness: int = 18
+    desktop_overhang: int = 30
+    modesty_panel_style: str = "standard"
+    cable_cutout_style: str = "rear_center"
+    cable_tray_style: str = "standard"
+    accessory_side: str = "right"
+    finish_notes: List[str] = []
     is_oversize: bool = False
     desktop_split_count: int = 1
     requires_centre_support: bool = False
@@ -533,11 +539,16 @@ AI_NUMERIC_LIMITS = {
     "mixer_tray_width": (280, 1000),
     "material_thickness": (15, 25),
     "desktop_split_count": (1, 2),
+    "desktop_overhang": (0, 120),
 }
 
 AI_ENUM_LIMITS = {
-    "desk_type": {"gaming", "studio", "office"},
+    "desk_type": {"gaming", "studio", "office", "standard_office", "executive", "executive_office", "creator_studio", "minimal_commercial", "heavy_duty_oversize"},
     "leg_style": {"standard", "angular", "solid", "trestle"},
+    "modesty_panel_style": {"none", "standard", "privacy", "executive"},
+    "cable_cutout_style": {"rear_center", "dual_grommet", "long_slot"},
+    "cable_tray_style": {"none", "standard", "premium"},
+    "accessory_side": {"left", "right"},
     "joint_type": {"finger", "dovetail", "box"},
 }
 
@@ -793,9 +804,27 @@ def calculate_desk_parts(params: DesignParams) -> List[Dict[str, Any]]:
     height = max(680, int(params.height))
     t = max(15, int(params.material_thickness))
 
-    leg_size = max(44, int(round(t * 2.4)))
-    leg_inset_x = max(70, int(round(width * 0.08)))
-    leg_inset_y = max(55, int(round(depth * 0.08)))
+    desk_style = str(getattr(params, "desk_type", "office") or "office").strip().lower().replace("-", "_").replace(" ", "_")
+    is_executive = desk_style in {"executive", "executive_office"}
+    is_creator_studio = desk_style in {"studio", "creator_studio"}
+    is_minimal_office = desk_style in {"office", "standard_office", "minimal_commercial"}
+    is_heavy_duty = desk_style == "heavy_duty_oversize"
+
+    desktop_overhang = max(0, min(120, int(getattr(params, "desktop_overhang", 30) or 0)))
+    modesty_panel_style = str(getattr(params, "modesty_panel_style", "standard") or "standard").strip().lower()
+    cable_cutout_style = str(getattr(params, "cable_cutout_style", "rear_center") or "rear_center").strip().lower()
+    cable_tray_style = str(getattr(params, "cable_tray_style", "standard") or "standard").strip().lower()
+    accessory_side = str(getattr(params, "accessory_side", "right") or "right").strip().lower()
+
+    if is_heavy_duty:
+        leg_size = max(60, int(round(t * 3.2)))
+    elif is_executive:
+        leg_size = max(54, int(round(t * 3.0)))
+    else:
+        leg_size = max(44, int(round(t * 2.4)))
+
+    leg_inset_x = max(70 + desktop_overhang, int(round(width * 0.08)))
+    leg_inset_y = max(55 + min(desktop_overhang, 80), int(round(depth * 0.08)))
 
     clear_span_x = max(300, width - ((leg_inset_x + leg_size) * 2))
     clear_span_y = max(220, depth - ((leg_inset_y + leg_size) * 2))
@@ -896,14 +925,26 @@ def calculate_desk_parts(params: DesignParams) -> List[Dict[str, Any]]:
         cutouts: List[Dict[str, Any]] = []
         pockets: List[Dict[str, Any]] = []
 
-        rail_fix_count = 7 if part_w >= 1800 else 5
+        rail_fix_count = 9 if (is_executive or is_heavy_duty or part_w >= 2200) else (7 if part_w >= 1800 else 5)
         drill_points.extend(line_drills("rear rail fixing", part_w, clamp(part_h - 55, 35, part_h - 25), rail_fix_count, edge=75, diameter=4, depth_value=10))
         drill_points.extend(line_drills("front rail fixing", part_w, 55, rail_fix_count, edge=75, diameter=4, depth_value=10))
 
         if params.has_cable_management:
-            cable_w = min(180, max(90, part_w * 0.10))
-            cable_h = 42
-            cutouts.append(rect_cutout("rear cable pass-through", (part_w - cable_w) / 2, clamp(part_h - 115, 70, part_h - 70), cable_w, cable_h))
+            if cable_cutout_style == "dual_grommet":
+                cable_w = 96
+                cable_h = 42
+                left_x = clamp(part_w * 0.28 - cable_w / 2, 70, part_w - cable_w - 70)
+                right_x = clamp(part_w * 0.72 - cable_w / 2, 70, part_w - cable_w - 70)
+                cutouts.append(rect_cutout("left rear cable grommet", left_x, clamp(part_h - 115, 70, part_h - 70), cable_w, cable_h))
+                cutouts.append(rect_cutout("right rear cable grommet", right_x, clamp(part_h - 115, 70, part_h - 70), cable_w, cable_h))
+            elif cable_cutout_style == "long_slot":
+                cable_w = min(520, max(220, part_w * 0.28))
+                cable_h = 38
+                cutouts.append(rect_cutout("long rear cable slot", (part_w - cable_w) / 2, clamp(part_h - 115, 70, part_h - 70), cable_w, cable_h))
+            else:
+                cable_w = min(180, max(90, part_w * 0.10))
+                cable_h = 42
+                cutouts.append(rect_cutout("rear cable pass-through", (part_w - cable_w) / 2, clamp(part_h - 115, 70, part_h - 70), cable_w, cable_h))
 
         if params.has_vesa_mount:
             cx = part_w / 2
@@ -985,25 +1026,44 @@ def calculate_desk_parts(params: DesignParams) -> List[Dict[str, Any]]:
         )
 
     back_panel_w = max(600, clear_span_x - 40)
-    back_panel_h = 180 if params.desk_type == "office" else 220
+    if modesty_panel_style == "executive" or is_executive:
+        back_panel_h = 320
+    elif modesty_panel_style == "privacy":
+        back_panel_h = 260
+    elif is_minimal_office:
+        back_panel_h = 180
+    else:
+        back_panel_h = 220
     back_panel_cutouts = []
     if params.has_cable_management:
         back_panel_cutouts.append(rect_cutout("modesty cable slot", (back_panel_w - 220) / 2, clamp(back_panel_h - 70, 45, back_panel_h - 45), 220, 36))
-    add_part(
-        "Back Modesty Panel",
+    if modesty_panel_style != "none":
+        modesty_name = "Executive Privacy Modesty Panel" if (is_executive or modesty_panel_style == "executive") else "Back Modesty Panel"
+        add_part(
+            modesty_name,
         back_panel_w,
         back_panel_h,
         drill_points=line_drills("modesty panel top fixing", back_panel_w, back_panel_h - 28, 5, edge=55, diameter=5, depth_value=12),
-        cutouts=back_panel_cutouts,
-    )
+            cutouts=back_panel_cutouts,
+        )
 
-    if params.has_cable_management:
-        tray_w = max(500, min(width - (leg_inset_x * 2) - 120, int(width * 0.60)))
+    if is_executive or is_heavy_duty:
         add_part(
-            "Cable Tray Base",
+            "Premium Front Fascia Rail",
+            clear_span_x,
+            70 if is_executive else 80,
+            drill_points=line_drills("premium front fascia fixing", clear_span_x, 35, rail_count, edge=55, diameter=5, depth_value=12),
+        )
+
+    if params.has_cable_management and cable_tray_style != "none":
+        tray_w = max(500, min(width - (leg_inset_x * 2) - 120, int(width * 0.60)))
+        tray_base_name = "Premium Cable Tray Base" if cable_tray_style == "premium" or is_executive else "Cable Tray Base"
+        tray_base_depth = 115 if cable_tray_style == "premium" or is_executive else 85
+        add_part(
+            tray_base_name,
             tray_w,
-            85,
-            drill_points=corner_drills("cable tray base fixing", tray_w, 85, inset=22, diameter=5, depth_value=12),
+            tray_base_depth,
+            drill_points=corner_drills("cable tray base fixing", tray_w, tray_base_depth, inset=22, diameter=5, depth_value=12),
             cutouts=[rect_cutout("cable tray tie slot", tray_w / 2 - 45, 24, 90, 28)],
         )
         add_part("Cable Tray Front", tray_w, 50, drill_points=line_drills("cable tray front fixing", tray_w, 25, 4, edge=45, diameter=4, depth_value=10))
