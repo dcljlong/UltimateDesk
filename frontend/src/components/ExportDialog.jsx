@@ -120,6 +120,18 @@ const ExportDialog = ({ isOpen, onClose, params, designName }) => {
   const [shareCopied, setShareCopied] = useState(false);
   const [isGeneratingReviewDrawings, setIsGeneratingReviewDrawings] = useState(false);
   const [cncConfig, setCncConfig] = useState(DEFAULT_CNC_CONFIG);
+  const [cncSafetyConfirmed, setCncSafetyConfirmed] = useState({
+    reviewedDrawings: false,
+    checkedMachineSettings: false,
+    willVerifyInCam: false,
+  });
+
+  const requiresCncConfirmation = includedFiles.includes('gcode');
+  const cncSafetyReady = !requiresCncConfirmation || (
+    cncSafetyConfirmed.reviewedDrawings &&
+    cncSafetyConfirmed.checkedMachineSettings &&
+    cncSafetyConfirmed.willVerifyInCam
+  );
 
   // Load bundle catalog once
   useEffect(() => {
@@ -279,6 +291,10 @@ const ExportDialog = ({ isOpen, onClose, params, designName }) => {
   };
 
   const resetCncConfig = () => setCncConfig(DEFAULT_CNC_CONFIG);
+
+  const updateCncSafetyConfirmed = (key, checked) => {
+    setCncSafetyConfirmed((prev) => ({ ...prev, [key]: checked }));
+  };
 
   const handleClose = () => {
     setExportResult(null);
@@ -654,6 +670,42 @@ const ExportDialog = ({ isOpen, onClose, params, designName }) => {
                 <div className="mt-3 rounded-lg bg-yellow-500/10 border border-yellow-500/30 p-3 text-xs text-[var(--text-secondary)]">
                   Verify exported NC in your CAM/controller preview before cutting. GRBL uses explicit drill moves; Mach/LinuxCNC/Fanuc/Haas posts may use canned drill cycles.
                 </div>
+
+                <div className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 p-3" data-testid="cnc-safety-confirmation-panel">
+                  <h4 className="font-bold text-sm text-red-400 mb-2">CNC safety confirmation required</h4>
+                  <div className="space-y-2 text-xs text-[var(--text-secondary)]">
+                    <label className="flex items-start gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={cncSafetyConfirmed.reviewedDrawings}
+                        onChange={(e) => updateCncSafetyConfirmed('reviewedDrawings', e.target.checked)}
+                        className="mt-0.5"
+                        data-testid="cnc-confirm-reviewed-drawings"
+                      />
+                      <span>I have reviewed the design drawings, dimensions, parts, and feature positions before generating machine files.</span>
+                    </label>
+                    <label className="flex items-start gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={cncSafetyConfirmed.checkedMachineSettings}
+                        onChange={(e) => updateCncSafetyConfirmed('checkedMachineSettings', e.target.checked)}
+                        className="mt-0.5"
+                        data-testid="cnc-confirm-machine-settings"
+                      />
+                      <span>I have checked material thickness, cutter diameter, feed, plunge, spindle, post processor, and work origin assumptions.</span>
+                    </label>
+                    <label className="flex items-start gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={cncSafetyConfirmed.willVerifyInCam}
+                        onChange={(e) => updateCncSafetyConfirmed('willVerifyInCam', e.target.checked)}
+                        className="mt-0.5"
+                        data-testid="cnc-confirm-cam-verification"
+                      />
+                      <span>I understand these are reference CNC files and will verify all toolpaths in CAM/controller preview before cutting.</span>
+                    </label>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -689,7 +741,7 @@ const ExportDialog = ({ isOpen, onClose, params, designName }) => {
             ) : isPro ? (
               <Button
                 onClick={handleGenerateExport}
-                disabled={isGenerating || !quote}
+                disabled={isGenerating || !quote || !cncSafetyReady}
                 className="w-full btn-primary"
                 data-testid="generate-export-btn"
               >
@@ -700,7 +752,7 @@ const ExportDialog = ({ isOpen, onClose, params, designName }) => {
             ) : canUseExistingCredit ? (
               <Button
                 onClick={handleGenerateExport}
-                disabled={isGenerating || !quote}
+                disabled={isGenerating || !quote || !cncSafetyReady}
                 className="w-full btn-primary"
                 data-testid="use-credit-btn"
               >
@@ -709,7 +761,7 @@ const ExportDialog = ({ isOpen, onClose, params, designName }) => {
             ) : (
               <Button
                 onClick={handleCheckout}
-                disabled={isCheckingOut || !quote}
+                disabled={isCheckingOut || !quote || !cncSafetyReady}
                 className="w-full btn-primary"
                 data-testid="checkout-btn"
               >
@@ -728,6 +780,12 @@ const ExportDialog = ({ isOpen, onClose, params, designName }) => {
             {accessStatus?.remaining > 0 && !isPro && !canUseExistingCredit && (
               <p className="text-xs text-center text-[var(--text-secondary)]" data-testid="credit-mismatch-note">
                 You have a paid credit for <strong>{latestCreditBundle}</strong>. Switch bundle above to use it.
+              </p>
+            )}
+
+            {requiresCncConfirmation && !cncSafetyReady && (
+              <p className="text-xs text-center text-red-400" data-testid="cnc-safety-disabled-note">
+                Confirm the CNC safety checklist above before generating NC/G-code files.
               </p>
             )}
 
