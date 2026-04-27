@@ -50,61 +50,9 @@ const DeskPreview3D = ({ params, className = '' }) => {
       accentSoft: '#6ee7b7',
       panel: '#8f6b4a',
     },
-    standard_office: {
-      top: '#c69a6b',
-      side: '#a98259',
-      frame: '#3d4148',
-      accent: '#059669',
-      accentSoft: '#6ee7b7',
-      panel: '#8f6b4a',
-    },
-    executive: {
-      top: '#18181b',
-      side: '#262626',
-      frame: '#0f172a',
-      accent: '#d4af37',
-      accentSoft: '#f5d76e',
-      panel: '#111827',
-    },
-    executive_office: {
-      top: '#18181b',
-      side: '#262626',
-      frame: '#0f172a',
-      accent: '#d4af37',
-      accentSoft: '#f5d76e',
-      panel: '#111827',
-    },
-    creator_studio: {
-      top: '#2a2d34',
-      side: '#353944',
-      frame: '#171b22',
-      accent: '#6366f1',
-      accentSoft: '#a5b4fc',
-      panel: '#242935',
-    },
-    heavy_duty_oversize: {
-      top: '#171717',
-      side: '#2b2b2b',
-      frame: '#020617',
-      accent: '#f97316',
-      accentSoft: '#fdba74',
-      panel: '#111827',
-    },
   };
 
-  const normalizedDeskType = String(params.desk_type || 'office').replace(/-/g, '_');
-  const colors = colorSchemes[normalizedDeskType] || colorSchemes.office;
-  const deskTypeLabels = {
-    gaming: 'Gaming',
-    studio: 'Studio',
-    office: 'Office',
-    standard_office: 'Standard Office',
-    executive: 'Executive',
-    executive_office: 'Executive',
-    creator_studio: 'Creator Studio',
-    heavy_duty_oversize: 'Heavy Duty Oversize',
-  };
-  const deskTypeLabel = deskTypeLabels[normalizedDeskType] || 'Office';
+  const colors = colorSchemes[params.desk_type] || colorSchemes.office;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -119,34 +67,15 @@ const DeskPreview3D = ({ params, className = '' }) => {
     const deskHeight = Math.max(680, params.height || 750);
     const t = Math.max(18, params.material_thickness || 18);
 
-    const isExecutive = normalizedDeskType === 'executive' || normalizedDeskType === 'executive_office';
-    const isHeavyDuty = normalizedDeskType === 'heavy_duty_oversize';
-    const desktopOverhang = Math.max(0, Math.min(120, Number(params.desktop_overhang ?? 30)));
-    const modestyPanelStyle = String(params.modesty_panel_style || 'standard');
-    const cableCutoutStyle = String(params.cable_cutout_style || 'rear_center');
-    const cableTrayStyle = String(params.cable_tray_style || 'standard');
-
-    const legSize = isHeavyDuty
-      ? Math.max(60, Math.round(t * 3.2))
-      : isExecutive
-        ? Math.max(54, Math.round(t * 3.0))
-        : Math.max(44, Math.round(t * 2.4));
-
-    const legInsetX = Math.max(70 + desktopOverhang, Math.round(deskWidth * 0.08));
-    const legInsetZ = Math.max(55 + Math.min(desktopOverhang, 80), Math.round(deskDepth * 0.08));
+    const legSize = Math.max(44, Math.round(t * 2.4));
+    const legInsetX = Math.max(70, Math.round(deskWidth * 0.08));
+    const legInsetZ = Math.max(55, Math.round(deskDepth * 0.08));
 
     const clearSpanX = Math.max(300, deskWidth - ((legInsetX + legSize) * 2));
     const clearSpanZ = Math.max(220, deskDepth - ((legInsetZ + legSize) * 2));
     const backPanelW = Math.max(600, clearSpanX - 40);
-    const backPanelH = isExecutive || modestyPanelStyle === 'executive'
-      ? 320
-      : modestyPanelStyle === 'privacy'
-        ? 260
-        : normalizedDeskType === 'office' || normalizedDeskType === 'standard_office'
-          ? 180
-          : 220;
+    const backPanelH = params.desk_type === 'office' ? 180 : 220;
     const trayW = Math.max(500, Math.min(deskWidth - (legInsetX * 2) - 120, Math.round(deskWidth * 0.60)));
-    const trayDepth = cableTrayStyle === 'premium' || isExecutive ? 115 : 85;
 
     const isOversize = Boolean(params.is_oversize) || deskWidth > 2400;
     const desktopSplitCount = isOversize ? Math.max(2, params.desktop_split_count || 2) : 1;
@@ -243,8 +172,7 @@ const DeskPreview3D = ({ params, className = '' }) => {
       ctx.restore();
     };
 
-    const frameTop = shadeHex(colors.frame, isExecutive ? 24 : 14);
-    const premiumGold = colors.accent;
+    const frameTop = shadeHex(colors.frame, 14);
     const frameRight = shadeHex(colors.frame, -2);
     const frameFront = shadeHex(colors.frame, -14);
 
@@ -437,7 +365,7 @@ const DeskPreview3D = ({ params, className = '' }) => {
     });
 
     // Cable tray
-    if (params.has_cable_management && cableTrayStyle !== 'none') {
+    if (params.has_cable_management) {
       const trayBaseY = deskHeight - 105;
       const trayZ = deskDepth * 0.06;
       drawCuboid({
@@ -446,7 +374,7 @@ const DeskPreview3D = ({ params, className = '' }) => {
         z: trayZ,
         w: trayW,
         h: 12,
-        d: trayDepth,
+        d: 85,
         topColor: panelTop,
         rightColor: panelRight,
         frontColor: panelFront,
@@ -467,7 +395,7 @@ const DeskPreview3D = ({ params, className = '' }) => {
       drawCuboid({
         x: -trayW / 2,
         y: trayBaseY + 12,
-        z: trayZ + trayDepth - t,
+        z: trayZ + 85 - t,
         w: trayW,
         h: 50,
         d: t,
@@ -725,7 +653,7 @@ const DeskPreview3D = ({ params, className = '' }) => {
       }
       ctx.restore();
     }
-  }, [colors, exploded, isProtected, params, viewTransform, watermarkText, normalizedDeskType]);
+  }, [colors, exploded, isProtected, params, viewTransform, watermarkText]);
 
   const roundToRange = (value, step = 50) => `~${Math.round(value / step) * step}`;
   const fmtDim = (value) => (isProtected ? roundToRange(value) : `${value}`);
@@ -812,21 +740,11 @@ const DeskPreview3D = ({ params, className = '' }) => {
 
       <div className="absolute top-4 left-4 z-10 flex gap-2">
         <span className="px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider bg-[var(--primary)] text-white shadow-lg">
-          {deskTypeLabel} Desk
+          {params.desk_type} Desk
         </span>
         <span className="px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider bg-white/85 text-slate-700 shadow-sm">
           Straight frame
         </span>
-        {(isExecutive || params.modesty_panel_style === 'executive') && (
-          <span className="px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider bg-yellow-500 text-slate-950 shadow-lg">
-            Executive privacy
-          </span>
-        )}
-        {(params.cable_tray_style === 'premium' || isExecutive) && (
-          <span className="px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider bg-white/85 text-slate-700 shadow-sm">
-            Premium tray
-          </span>
-        )}
         {(params.is_oversize || params.width > 2400) && (
           <span className="px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider bg-amber-500 text-white shadow-lg">
             Oversize split top
@@ -874,18 +792,6 @@ const DeskPreview3D = ({ params, className = '' }) => {
             <div className="flex justify-between gap-4 pt-1 border-t border-[var(--border)]">
               <span className="text-[var(--text-secondary)]">Material:</span>
               <span className="font-bold">{fmtMat(params.material_thickness)}mm</span>
-            </div>
-            <div className="flex justify-between gap-4 pt-1 border-t border-[var(--border)]">
-              <span className="text-[var(--text-secondary)]">Desk style:</span>
-              <span className="font-bold">{deskTypeLabel}</span>
-            </div>
-            <div className="flex justify-between gap-4">
-              <span className="text-[var(--text-secondary)]">Modesty:</span>
-              <span className="font-bold">{params.modesty_panel_style || 'standard'}</span>
-            </div>
-            <div className="flex justify-between gap-4">
-              <span className="text-[var(--text-secondary)]">Cable tray:</span>
-              <span className="font-bold">{params.cable_tray_style || 'standard'}</span>
             </div>
             {(params.is_oversize || params.width > 2400) && (
               <>
