@@ -3339,26 +3339,118 @@ def generate_review_drawing_pdf_bytes(params: DesignParams, design_name: str = "
         c.drawString(margin, y, "Indicative hardware groups")
         y -= 8 * mm
 
+        c.setFillColor(colors.black)
+        c.setFont("Helvetica-Bold", 10)
+        c.drawString(margin, y, "Calculated hardware quantities")
+        y -= 7 * mm
+
+        c.setFillColor(colors.HexColor("#444444"))
+        c.setFont("Helvetica", 7)
+        c.drawString(margin + 4 * mm, y, "Quantities are calculated from current drilled feature groups where available. Any zero/TBC rows must be manually confirmed.")
+        y -= 6 * mm
+
+        drill_keys = ("drill_points", "holes", "joinery_holes", "connector_holes")
+
+        def count_drills_for_terms(include_terms, exclude_terms=()):
+            total = 0
+            matched_parts = 0
+            for part in nesting.parts:
+                part_name = str(part.get("name", "")).lower()
+                if include_terms and not any(term in part_name for term in include_terms):
+                    continue
+                if exclude_terms and any(term in part_name for term in exclude_terms):
+                    continue
+                part_count = len(feature_items(part, drill_keys))
+                if part_count:
+                    matched_parts += 1
+                total += part_count
+            return total, matched_parts
+
+        def qty_text(count, matched_parts, fallback="TBC - confirm from drill schedule"):
+            if count > 0:
+                part_word = "part" if matched_parts == 1 else "parts"
+                return f"{count} drilled fixing point{'s' if count != 1 else ''} across {matched_parts} {part_word}"
+            return fallback
+
+        desktop_count, desktop_parts = count_drills_for_terms(("desktop", "top"), ("vesa", "mixer", "tray", "hook"))
+        rail_leg_count, rail_leg_parts = count_drills_for_terms(("rail", "leg post", "leg", "side rail", "rear upper", "front lower"), ("cable tray", "mixer", "vesa", "hook"))
+        modesty_count, modesty_parts = count_drills_for_terms(("modesty", "back panel", "back modesty", "rear panel"), ())
+        cable_count, cable_parts = count_drills_for_terms(("cable tray", "cable"), ())
+        mixer_count, mixer_parts = count_drills_for_terms(("mixer",), ())
+        headset_count, headset_parts = count_drills_for_terms(("headset", "hook"), ())
+        vesa_count, vesa_parts = count_drills_for_terms(("vesa", "monitor"), ())
+        all_count, all_parts = count_drills_for_terms((), ())
+
         hardware_rows = [
-            ("Desktop to rails/frame", "Wood screws / confirm spec", "Per drill schedule", "Pilot drill only; avoid breakthrough through desktop"),
-            ("Rail to leg post joints", "Screws/dowels/cam/confirm hardware", "Per joint detail", "Clamp square; confirm edge distance"),
-            ("Back modesty panel", "Wood screws / confirm spec", "Per drill schedule", "Install after frame is square"),
-            ("Cable tray", "Small screws / confirm spec", "Per tray holes", "Keep clear of cable pass-through and grommets"),
+            (
+                "Desktop to rails/frame",
+                "Wood screws / confirm spec",
+                qty_text(desktop_count, desktop_parts),
+                "Pilot drill only; avoid breakthrough through desktop",
+                "Calculated" if desktop_count else "Manual check",
+            ),
+            (
+                "Rail to leg post joints",
+                "Screws/dowels/cam/confirm hardware",
+                qty_text(rail_leg_count, rail_leg_parts),
+                "Clamp square; confirm edge distance",
+                "Calculated" if rail_leg_count else "Manual check",
+            ),
+            (
+                "Back modesty panel",
+                "Wood screws / confirm spec",
+                qty_text(modesty_count, modesty_parts),
+                "Install after frame is square",
+                "Calculated" if modesty_count else "Manual check",
+            ),
+            (
+                "Cable tray",
+                "Small screws / confirm spec",
+                qty_text(cable_count, cable_parts),
+                "Keep clear of cable pass-through and grommets",
+                "Calculated" if cable_count else "Manual check",
+            ),
         ]
 
         if params.has_mixer_tray:
-            hardware_rows.append(("Mixer tray", "Screws / inserts / confirm spec", "Per mixer tray holes", "Check rebate depth and mixer clearance"))
+            hardware_rows.append((
+                "Mixer tray",
+                "Screws / inserts / confirm spec",
+                qty_text(mixer_count, mixer_parts),
+                "Check rebate depth and mixer clearance",
+                "Calculated" if mixer_count else "Manual check",
+            ))
 
         if params.has_headset_hook:
-            hardware_rows.append(("Headset hook", "Small screws / confirm spec", "2 fixing points typical", "Confirm handed side before drilling"))
+            hardware_rows.append((
+                "Headset hook",
+                "Small screws / confirm spec",
+                qty_text(headset_count, headset_parts),
+                "Confirm handed side before drilling",
+                "Calculated" if headset_count else "Manual check",
+            ))
 
         if params.has_vesa_mount:
-            hardware_rows.append(("VESA mount", "Bolts/inserts/load-rated hardware", "VESA 100 pattern + supports", "Must be verified for monitor load"))
+            hardware_rows.append((
+                "VESA mount",
+                "Bolts/inserts/load-rated hardware",
+                qty_text(vesa_count, vesa_parts),
+                "Must be verified for monitor load",
+                "Calculated" if vesa_count else "Manual check",
+            ))
+
+        hardware_rows.append((
+            "Total drilled fixing features",
+            "All drill groups",
+            qty_text(all_count, all_parts, "No drilled feature groups found"),
+            "Cross-check with CNC drill audit before manufacture",
+            "Audit",
+        ))
 
         draw_table(
-            ["Connection", "Indicative hardware", "Quantity basis", "Critical check"],
+            ["Connection", "Indicative hardware", "Calculated count / basis", "Critical check", "Status"],
             hardware_rows,
-            [48 * mm, 52 * mm, 42 * mm, 102 * mm],
+            [40 * mm, 44 * mm, 58 * mm, 76 * mm, 26 * mm],
         )
 
         c.setFillColor(colors.black)
