@@ -1,89 +1,127 @@
-﻿import React, { useEffect, useState } from 'react';
+﻿import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { 
-  CheckCircle, 
-  Cube, 
+import {
+  CheckCircle,
+  Cube,
   Spinner,
   XCircle,
-  ArrowRight
+  ArrowRight,
+  ClockCounterClockwise,
 } from '@phosphor-icons/react';
 import { Button } from '../components/ui/button';
 import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
 
 const getApiUrl = () => {
-  // Use window.location.origin to ensure same protocol
+  const baseUrl = process.env.REACT_APP_BACKEND_URL || '';
+  if (baseUrl) {
+    return baseUrl + '/api';
+  }
   if (typeof window !== 'undefined' && window.location.protocol === 'https:') {
     return window.location.origin + '/api';
   }
-  const baseUrl = process.env.REACT_APP_BACKEND_URL || '';
-  return baseUrl + '/api';
+  return '/api';
 };
+
 const API = getApiUrl();
 
 const PaymentSuccess = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { checkAuth } = useAuth();
-  
-  const [status, setStatus] = useState('checking'); // checking, success, failed
+
+  const [status, setStatus] = useState('checking'); // checking, success, pending, failed
   const [attempts, setAttempts] = useState(0);
-  const maxAttempts = 5;
-  const pollInterval = 2000;
+  const [lastMessage, setLastMessage] = useState('');
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const sessionId = searchParams.get('session_id');
+  const checkoutType = searchParams.get('type') || 'single';
+
+  const maxAttempts = 12;
+  const pollInterval = 2500;
+
+  const checkPaymentStatus = useCallback(async () => {
+    if (!sessionId) {
+      setStatus('failed');
+      setLastMessage('No checkout session was supplied.');
+      return;
+    }
+
+    setIsRefreshing(true);
+
+    try {
+      const { data } = await axios.get(`${API}/payments/status/${sessionId}`);
+
+      if (data.payment_status === 'paid' || data.status === 'complete') {
+        setStatus('success');
+        setLastMessage('Payment confirmed.');
+        await checkAuth();
+        return;
+      }
+
+      if (data.status === 'expired' || data.payment_status === 'failed') {
+        setStatus('failed');
+        setLastMessage('Payment could not be confirmed.');
+        return;
+      }
+
+      setStatus('pending');
+      setLastMessage(data.message || 'Payment confirmation is still pending.');
+    } catch (error) {
+      setStatus('pending');
+      setLastMessage('Payment confirmation is still pending. This can take a short time after checkout.');
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [sessionId, checkAuth]);
 
   useEffect(() => {
     if (!sessionId) {
       setStatus('failed');
+      setLastMessage('No checkout session was supplied.');
       return;
     }
 
-    const pollPaymentStatus = async () => {
-      try {
-        const { data } = await axios.get(`${API}/payments/status/${sessionId}`);
-        
-        if (data.payment_status === 'paid') {
-          setStatus('success');
-          // Refresh user data to update isPro status
-          await checkAuth();
-          return;
-        } else if (data.status === 'expired') {
-          setStatus('failed');
-          return;
-        }
+    let timer;
 
-        // Continue polling if still pending
-        if (attempts < maxAttempts) {
-          setAttempts(prev => prev + 1);
-          setTimeout(pollPaymentStatus, pollInterval);
-        } else {
-          setStatus('failed');
+    const poll = async () => {
+      await checkPaymentStatus();
+
+      setAttempts((prev) => {
+        const next = prev + 1;
+        if (next < maxAttempts) {
+          timer = setTimeout(poll, pollInterval);
         }
-      } catch (error) {
-        console.error('Payment status check failed:', error);
-        if (attempts < maxAttempts) {
-          setAttempts(prev => prev + 1);
-          setTimeout(pollPaymentStatus, pollInterval);
-        } else {
-          setStatus('failed');
-        }
-      }
+        return next;
+      });
     };
 
-    pollPaymentStatus();
-  }, [sessionId, attempts, checkAuth]);
+    poll();
+
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+  }, [sessionId, checkPaymentStatus]);
+
+  const isSingleExport = checkoutType === 'single';
 
   return (
     <div className="min-h-screen bg-[var(--background)] flex items-center justify-center p-4">
       <div className="absolute inset-0 grid-pattern opacity-50" />
-      
+
       <motion.div
-        initial={{ opacity: 0, scale: 0.9 }}
+        initial={{ opacity: 0, scale: 0.96 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="neu-surface p-8 rounded-xl text-center max-w-md w-full relative"
+        className="relative neu-surface p-8 rounded-2xl max-w-md w-full text-center"
+        data-testid="payment-success-page"
       >
+        <div className="flex items-center justify-center gap-2 mb-6">
+          <Cube size={28} className="text-[var(--primary)]" />
+          <span className="font-bold">UltimateDesk</span>
+        </div>
+
         {status === 'checking' && (
           <>
             <motion.div
@@ -93,10 +131,46 @@ const PaymentSuccess = () => {
             >
               <Spinner size={64} className="text-[var(--primary)]" />
             </motion.div>
-            <h1 className="text-2xl font-bold mb-2">Processing Payment</h1>
+            <h1 className="text-2xl font-bold mb-2">Confirming Payment</h1>
             <p className="text-[var(--text-secondary)]">
-              Please wait while we confirm your payment...
+              Please wait while we confirm your checkout session.
             </p>
+          </>
+        )}
+
+        {status === 'pending' && (
+          <>
+            <div className="w-16 h-16 mx-auto mb-6 rounded-full bg-yellow-500/20 flex items-center justify-center">
+              <ClockCounterClockwise size={40} weight="fill" className="text-yellow-500" />
+            </div>
+            <h1 className="text-2xl font-bold mb-2">Payment Confirmation Pending</h1>
+            <p className="text-[var(--text-secondary)] mb-3">
+              Your checkout page has returned, but payment confirmation is still pending.
+              This is normal if the payment webhook is still processing.
+            </p>
+            <p className="text-xs text-[var(--text-secondary)] mb-6">
+              {lastMessage || 'We will keep checking for a short time.'}
+            </p>
+
+            <div className="space-y-3">
+              <Button
+                onClick={checkPaymentStatus}
+                disabled={isRefreshing}
+                className="w-full btn-primary"
+                data-testid="refresh-payment-status-btn"
+              >
+                {isRefreshing ? 'Checking...' : 'Check Again'}
+              </Button>
+
+              <Button
+                variant="outline"
+                onClick={() => navigate(isSingleExport ? '/designer' : '/pricing')}
+                className="w-full"
+                data-testid="continue-after-pending-btn"
+              >
+                {isSingleExport ? 'Back to Designer' : 'Back to Pricing'}
+              </Button>
+            </div>
           </>
         )}
 
@@ -110,25 +184,31 @@ const PaymentSuccess = () => {
             >
               <CheckCircle size={40} weight="fill" className="text-white" />
             </motion.div>
-            <h1 className="text-2xl font-bold mb-2">Payment Successful</h1>
+
+            <h1 className="text-2xl font-bold mb-2">Payment Confirmed</h1>
             <p className="text-[var(--text-secondary)] mb-6">
-              Your payment was successful. Your account is ready to generate and download the export bundles included with your purchase.
+              {isSingleExport
+                ? 'Your export credit is ready. Return to the designer and generate your files.'
+                : 'Your Pro access is ready. You can now generate export bundles while subscribed.'}
             </p>
+
             <div className="space-y-3">
-              <Button 
+              <Button
                 onClick={() => navigate('/designer')}
-                className="w-full btn-primary gap-2"
+                className="w-full btn-primary"
                 data-testid="go-to-designer-btn"
               >
-                Open Designer <ArrowRight size={18} />
+                {isSingleExport ? 'Generate Export Files' : 'Open Designer'}
+                <ArrowRight size={18} className="ml-2" />
               </Button>
-              <Button 
+
+              <Button
                 variant="outline"
                 onClick={() => navigate('/library')}
                 className="w-full"
                 data-testid="go-to-library-btn"
               >
-                View Saved Designs
+                My Designs
               </Button>
             </div>
           </>
@@ -136,35 +216,52 @@ const PaymentSuccess = () => {
 
         {status === 'failed' && (
           <>
-            <motion.div
-              initial={{ scale: 0 }}
-              animate={{ scale: 1 }}
-              className="w-16 h-16 mx-auto mb-6 rounded-full bg-red-500 flex items-center justify-center"
-            >
+            <div className="w-16 h-16 mx-auto mb-6 rounded-full bg-red-500 flex items-center justify-center">
               <XCircle size={40} weight="fill" className="text-white" />
-            </motion.div>
-            <h1 className="text-2xl font-bold mb-2">Payment Issue</h1>
-            <p className="text-[var(--text-secondary)] mb-6">
-              We couldn't confirm your payment. If you were charged, please contact support and we'll sort it out.
+            </div>
+
+            <h1 className="text-2xl font-bold mb-2">Payment Could Not Be Confirmed</h1>
+            <p className="text-[var(--text-secondary)] mb-3">
+              We could not confirm this checkout session.
             </p>
+            <p className="text-xs text-[var(--text-secondary)] mb-6">
+              {lastMessage || 'If you were charged, contact support and we will sort it out.'}
+            </p>
+
             <div className="space-y-3">
-              <Button 
-                onClick={() => navigate('/pricing')}
+              <Button
+                onClick={checkPaymentStatus}
+                disabled={isRefreshing}
                 className="w-full btn-primary"
+                data-testid="retry-payment-status-btn"
+              >
+                {isRefreshing ? 'Checking...' : 'Check Again'}
+              </Button>
+
+              <Button
+                variant="outline"
+                onClick={() => navigate('/pricing')}
+                className="w-full"
                 data-testid="try-again-btn"
               >
-                Try Again
+                Back to Pricing
               </Button>
-              <Button 
-                variant="outline"
+
+              <Button
+                variant="ghost"
                 onClick={() => navigate('/')}
                 className="w-full"
+                data-testid="back-home-btn"
               >
                 Back to Home
               </Button>
             </div>
           </>
         )}
+
+        <div className="mt-6 pt-4 border-t border-[var(--border)] text-xs text-[var(--text-secondary)]">
+          Session: {sessionId ? `${sessionId.slice(0, 10)}...` : 'missing'}
+        </div>
       </motion.div>
     </div>
   );
