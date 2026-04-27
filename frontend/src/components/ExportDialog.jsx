@@ -118,6 +118,7 @@ const ExportDialog = ({ isOpen, onClose, params, designName }) => {
   const [shareLink, setShareLink] = useState(null);
   const [isSharing, setIsSharing] = useState(false);
   const [shareCopied, setShareCopied] = useState(false);
+  const [isGeneratingReviewDrawings, setIsGeneratingReviewDrawings] = useState(false);
   const [cncConfig, setCncConfig] = useState(DEFAULT_CNC_CONFIG);
 
   // Load bundle catalog once
@@ -226,6 +227,41 @@ const ExportDialog = ({ isOpen, onClose, params, designName }) => {
       const filePath = exportResult.files[fileType];
       const fileUrl = filePath.startsWith('http') ? filePath : `${API_ORIGIN}${filePath}`;
       window.open(fileUrl, '_blank');
+    }
+  };
+
+  const handleReviewDrawings = async () => {
+    setIsGeneratingReviewDrawings(true);
+    setError(null);
+    try {
+      const response = await axios.post(
+        `${API}/review-drawings/pdf`,
+        {
+          params,
+          design_name: designName || 'UltimateDesk Design',
+          bundle,
+          cnc_config: includedFiles.includes('gcode') ? cncConfig : undefined,
+        },
+        {
+          withCredentials: true,
+          responseType: 'blob',
+        }
+      );
+
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const safeName = (designName || 'UltimateDesk_Design').replace(/\s+/g, '_');
+      link.href = url;
+      link.download = `${safeName}_review_drawings.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (e) {
+      setError(e.response?.data?.detail || 'Failed to generate review drawings');
+    } finally {
+      setIsGeneratingReviewDrawings(false);
     }
   };
 
@@ -620,6 +656,32 @@ const ExportDialog = ({ isOpen, onClose, params, designName }) => {
                 </div>
               </div>
             )}
+
+            <div className="neu-surface p-4 rounded-xl border border-[var(--border)]" data-testid="review-drawings-panel">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="font-bold text-sm flex items-center gap-2">
+                    <FilePdf size={16} className="text-red-500" />
+                    Design Review Drawings
+                  </h3>
+                  <p className="text-xs text-[var(--text-secondary)] mt-1">
+                    Download a dimensioned review PDF with plan view, front elevation, side elevation, design summary, and parts schedule before manufacturing export.
+                  </p>
+                </div>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleReviewDrawings}
+                disabled={isGeneratingReviewDrawings || !quote}
+                className="w-full mt-3"
+                data-testid="download-review-drawings-btn"
+              >
+                {isGeneratingReviewDrawings ? 'Generating review drawings...' : (
+                  <><FilePdf size={16} className="mr-2" /> Download Design Review Drawings</>
+                )}
+              </Button>
+            </div>
 
             {/* Action area */}
             {isChecking ? (
