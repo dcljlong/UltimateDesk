@@ -50,6 +50,23 @@ const ConfigPanel = ({ params, onParamsUpdate, className = '' }) => {
     onParamsUpdate(next);
   };
 
+  const buildMethodOptions = [
+    {
+      value: 'diy_power_tools',
+      label: 'DIY Power Tools',
+      description: 'Plans, cut list, hardware and assembly guidance for skilled builders using saws, drills, routers and jigs.'
+    },
+    {
+      value: 'cnc_router',
+      label: 'CNC Router',
+      description: 'DXF, SVG, NC/G-code reference files, nesting and CNC-focused manufacturing notes.'
+    },
+    {
+      value: 'workshop_pro',
+      label: 'Workshop / Pro',
+      description: 'Customer approval, manufacturing pack, hardware schedule, edge/finish notes and repeatable workshop workflow.'
+    },
+  ];
   const deskTypeOptions = [
     { value: 'standard_office', label: 'Standard Office' },
     { value: 'executive', label: 'Executive' },
@@ -342,6 +359,34 @@ const ConfigPanel = ({ params, onParamsUpdate, className = '' }) => {
         <TabsContent value="style" className="space-y-4">
           <div className="space-y-4">
             <div>
+            <div className="neu-surface p-4 rounded-xl space-y-3">
+              <Label className="mb-2 block">Build Method</Label>
+              <div className="grid grid-cols-1 gap-2">
+                {buildMethodOptions.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => updateParam('build_method', option.value)}
+                    className={`px-3 py-2 rounded-lg border transition-all text-sm text-left ${
+                      (params.build_method || 'cnc_router') === option.value
+                        ? 'bg-red-600 text-white border-red-600 ring-2 ring-red-400'
+                        : 'bg-neutral-800 text-gray-300 border-neutral-700 hover:border-red-400'
+                    }`}
+                    data-testid={`build-method-${option.value}`}
+                  >
+                    <div className="font-bold">{(params.build_method || 'cnc_router') === option.value ? '✓ ' : ''}{option.label}</div>
+                    <div className={`text-xs mt-1 ${
+                      (params.build_method || 'cnc_router') === option.value ? 'text-red-50' : 'text-gray-400'
+                    }`}>
+                      {option.description}
+                    </div>
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-[var(--text-secondary)]">
+                This changes the output guidance path first. Geometry and export rules stay controlled until each build method is proofed.
+              </p>
+            </div>
               <Label className="mb-2 block">Desk Type</Label>
               <div className="grid grid-cols-1 gap-2">
                 {deskTypeOptions.map((option) => (

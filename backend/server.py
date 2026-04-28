@@ -94,7 +94,8 @@ class DesignParams(BaseModel):
     width: int = 1800
     depth: int = 800
     height: int = 750
-    desk_type: str = "gaming"
+    desk_type: str = "gaming"
+    build_method: str = "cnc_router"
     monitor_count: int = 1
     has_rgb_channels: bool = False
     has_cable_management: bool = True
@@ -492,6 +493,7 @@ Available parameters you can modify:
 - depth (mm, typically 600-1000)
 - height (mm, typically 700-800)
 - desk_type: "gaming", "studio", "office"
+- build_method: "diy_power_tools", "cnc_router", "workshop_pro"
 - monitor_count (1-5)
 - has_rgb_channels (true/false)
 - has_cable_management (true/false)
@@ -546,7 +548,8 @@ AI_NUMERIC_LIMITS = {
 }
 
 AI_ENUM_LIMITS = {
-    "desk_type": {"gaming", "studio", "office", "standard_office", "executive", "executive_office", "creator_studio", "minimal_commercial", "heavy_duty_oversize"},
+    "desk_type": {"gaming", "studio", "office", "standard_office", "executive", "executive_office", "creator_studio", "minimal_commercial", "heavy_duty_oversize"},
+    "build_method": {"diy_power_tools", "cnc_router", "workshop_pro"},
     "leg_style": {"standard", "angular", "solid", "trestle"},
     "modesty_panel_style": {"none", "standard", "privacy", "executive"},
     "cable_cutout_style": {"rear_center", "dual_grommet", "long_slot"},
