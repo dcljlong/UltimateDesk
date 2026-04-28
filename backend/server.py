@@ -4691,17 +4691,38 @@ async def stripe_webhook(request: Request):
         else:
             event = json.loads(payload.decode("utf-8"))
 
-        if hasattr(event, "to_dict_recursive"):
-            event = event.to_dict_recursive()
+        def stripe_to_plain(value):
+            if hasattr(value, "to_dict_recursive"):
+                return value.to_dict_recursive()
+            if hasattr(value, "to_dict"):
+                return value.to_dict()
+            return value
 
-        event_type = event.get("type")
-        session_obj = (event.get("data") or {}).get("object") or {}
-        if hasattr(session_obj, "to_dict_recursive"):
-            session_obj = session_obj.to_dict_recursive()
+        event = stripe_to_plain(event)
+
+        if isinstance(event, dict):
+            event_type = event.get("type")
+            data_obj = event.get("data") or {}
+        else:
+            event_type = getattr(event, "type", None)
+            data_obj = getattr(event, "data", {}) or {}
+
+        data_obj = stripe_to_plain(data_obj)
+
+        if isinstance(data_obj, dict):
+            session_obj = data_obj.get("object") or {}
+        else:
+            session_obj = getattr(data_obj, "object", {}) or {}
+
+        session_obj = stripe_to_plain(session_obj)
 
         if event_type in ("checkout.session.completed", "checkout.session.async_payment_succeeded"):
-            session_id = session_obj.get("id")
-            payment_status = session_obj.get("payment_status", "paid")
+            if isinstance(session_obj, dict):
+                session_id = session_obj.get("id")
+                payment_status = session_obj.get("payment_status", "paid")
+            else:
+                session_id = getattr(session_obj, "id", None)
+                payment_status = getattr(session_obj, "payment_status", "paid")
 
             if session_id and payment_status in ("paid", "no_payment_required"):
                 transaction = await db.payment_transactions.find_one({"session_id": session_id})
