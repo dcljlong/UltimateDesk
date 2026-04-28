@@ -32,6 +32,7 @@ const DeskPreview3D = ({ params, className = '' }) => {
   const [exploded, setExploded] = useState(false);
   const [showDimensions, setShowDimensions] = useState(false);
   const [viewMode, setViewMode] = useState('iso');
+  const [orbitAngle, setOrbitAngle] = useState(-35);
   const [viewTransform, setViewTransform] = useState({ panX: 0, panY: 0, zoom: 1 });
   const dragStartRef = useRef(null);
   const canvasRef = useRef(null);
@@ -110,6 +111,15 @@ const DeskPreview3D = ({ params, className = '' }) => {
       const zCenter = z - (deskDepth / 2);
 
       switch (viewMode) {
+        case 'orbit': {
+          const angle = (orbitAngle * Math.PI) / 180;
+          const rx = x * Math.cos(angle) - zCenter * Math.sin(angle);
+          const rz = x * Math.sin(angle) + zCenter * Math.cos(angle);
+          return {
+            x: centerX + (rx - rz) * isoX,
+            y: floorY - y * unit + (rx + rz) * isoY,
+          };
+        }
         case 'front':
           return {
             x: centerX + x * unit * 0.72,
@@ -327,11 +337,11 @@ const DeskPreview3D = ({ params, className = '' }) => {
       edgeColor: 'rgba(0,0,0,0.18)',
     });
 
-    // Front lower rail
+    // Rear lower stretcher - keeps open/user side clear
     drawCuboid({
       x: -clearSpanX / 2,
       y: deskHeight * 0.16,
-      z: -deskDepth / 2 + legInsetZ + (legSize / 2) - explodeSpread,
+      z: deskDepth / 2 - legInsetZ - (legSize / 2) + explodeSpread,
       w: clearSpanX,
       h: 30,
       d: t,
@@ -702,7 +712,7 @@ const DeskPreview3D = ({ params, className = '' }) => {
       }
       ctx.restore();
     }
-  }, [colors, exploded, isProtected, params, viewMode, viewTransform, watermarkText]);
+  }, [colors, exploded, isProtected, orbitAngle, params, viewMode, viewTransform, watermarkText]);
 
   const roundToRange = (value, step = 50) => `~${Math.round(value / step) * step}`;
   const fmtDim = (value) => (isProtected ? roundToRange(value) : `${value}`);
@@ -752,7 +762,7 @@ const DeskPreview3D = ({ params, className = '' }) => {
     const zoomDelta = event.deltaY > 0 ? -0.08 : 0.08;
     setViewTransform((prev) => ({
       ...prev,
-      zoom: Math.min(1.8, Math.max(0.65, Number((prev.zoom + zoomDelta).toFixed(2)))),
+      zoom: Math.min(4, Math.max(0.35, Number((prev.zoom + zoomDelta).toFixed(2)))),
     }));
   };
 
@@ -768,12 +778,21 @@ const DeskPreview3D = ({ params, className = '' }) => {
   const zoomPreview = (amount) => {
     setViewTransform((prev) => ({
       ...prev,
-      zoom: Math.min(1.8, Math.max(0.65, Number((prev.zoom + amount).toFixed(2)))),
+      zoom: Math.min(4, Math.max(0.35, Number((prev.zoom + amount).toFixed(2)))),
     }));
+  };
+
+  const rotatePreview = (amount) => {
+    setViewMode('orbit');
+    setOrbitAngle((prev) => {
+      const next = (prev + amount) % 360;
+      return next < 0 ? next + 360 : next;
+    });
   };
 
   const resetPreviewView = () => {
     setViewMode('iso');
+    setOrbitAngle(-35);
     setViewTransform({ panX: 0, panY: 0, zoom: 1 });
   };
 
@@ -937,6 +956,20 @@ const DeskPreview3D = ({ params, className = '' }) => {
           </button>
           <button
             type="button"
+            onClick={() => rotatePreview(-15)}
+            className="px-2 py-1.5 rounded-md text-[11px] font-bold bg-white/80 text-slate-700 hover:bg-white"
+          >
+            Rot L
+          </button>
+          <button
+            type="button"
+            onClick={() => rotatePreview(15)}
+            className="px-2 py-1.5 rounded-md text-[11px] font-bold bg-white/80 text-slate-700 hover:bg-white"
+          >
+            Rot R
+          </button>
+          <button
+            type="button"
             onClick={resetPreviewView}
             className="px-2 py-1.5 rounded-md text-[11px] font-bold bg-white/80 text-slate-700 hover:bg-white"
           >
@@ -947,7 +980,7 @@ const DeskPreview3D = ({ params, className = '' }) => {
 
       <div className="absolute bottom-4 right-4 z-10 glass-surface rounded-lg px-3 py-2 flex items-center gap-2">
         <Cube size={16} className="text-[var(--primary)]" />
-        <span className="text-xs font-medium">Select view / drag / scroll</span>
+        <span className="text-xs font-medium">Select view / rotate / zoom</span>
       </div>
 
       <canvas
@@ -960,7 +993,7 @@ const DeskPreview3D = ({ params, className = '' }) => {
         onPointerLeave={stopDragging}
         onWheel={handleWheel}
         onDoubleClick={resetPreviewView}
-        title="Use view buttons, drag to move, mouse wheel to zoom, double-click to reset"
+        title="Use view buttons, rotate, drag to move, mouse wheel to zoom, double-click to reset"
         style={{ touchAction: 'none' }}
         className="w-full h-full object-contain rounded-lg cursor-grab active:cursor-grabbing"
       />
