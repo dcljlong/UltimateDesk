@@ -17,19 +17,22 @@ from bson import ObjectId
 import json
 import math
 
-# Emergent integrations
+# Optional Emergent LLM integration
 try:
     from emergentintegrations.llm.chat import LlmChat, UserMessage
-    from emergentintegrations.payments.stripe.checkout import StripeCheckout, CheckoutSessionRequest, CheckoutSessionResponse, CheckoutStatusResponse
     HAS_EMERGENT_INTEGRATIONS = True
 except ImportError:
     LlmChat = None
     UserMessage = None
-    StripeCheckout = None
-    CheckoutSessionRequest = None
-    CheckoutSessionResponse = None
-    CheckoutStatusResponse = None
     HAS_EMERGENT_INTEGRATIONS = False
+
+# Stripe SDK checkout integration
+try:
+    import stripe
+    HAS_STRIPE_SDK = True
+except ImportError:
+    stripe = None
+    HAS_STRIPE_SDK = False
 
 # Pricing engine
 from pricing import (
@@ -4295,8 +4298,8 @@ async def purchase_single_export(request: Request):
 
     user = await get_current_user(request)
 
-    if not HAS_EMERGENT_INTEGRATIONS:
-        raise HTTPException(status_code=503, detail="Stripe checkout unavailable in local mode")
+    if not HAS_STRIPE_SDK:
+        raise HTTPException(status_code=503, detail="Stripe SDK unavailable")
 
     # Compute authoritative quote on the server
     parts = calculate_desk_parts(design_params)
@@ -4314,31 +4317,42 @@ async def purchase_single_export(request: Request):
     if not api_key:
         raise HTTPException(status_code=500, detail="Stripe not configured")
 
-    host_url = str(request.base_url).rstrip("/")
-    webhook_url = f"{host_url}/api/webhook/stripe"
-    stripe_checkout = StripeCheckout(api_key=api_key, webhook_url=webhook_url)
+    stripe.api_key = api_key
 
     success_url = f"{origin_url}/payment/success?session_id={{CHECKOUT_SESSION_ID}}&type=single"
     cancel_url = f"{origin_url}/designer"
 
-    checkout_request = CheckoutSessionRequest(
-        amount=float(quote.total),
-        currency="nzd",
+    metadata = {
+        "user_id": user["id"],
+        "user_email": user["email"],
+        "product": "single_export",
+        "bundle": quote.bundle_key,
+        "commercial_license": "1" if commercial_license else "0",
+        "design_name": design_name[:80],
+    }
+
+    session = stripe.checkout.Session.create(
+        mode="payment",
+        customer_email=user["email"],
         success_url=success_url,
         cancel_url=cancel_url,
-        metadata={
-            "user_id": user["id"],
-            "user_email": user["email"],
-            "product": "single_export",
-            "bundle": quote.bundle_key,
-            "commercial_license": "1" if commercial_license else "0",
-            "design_name": design_name[:80],
-        },
+        line_items=[{
+            "price_data": {
+                "currency": "nzd",
+                "unit_amount": int(round(float(quote.total) * 100)),
+                "product_data": {
+                    "name": f"UltimateDesk {quote.headline}",
+                    "description": f"{quote.bundle_key} export bundle",
+                },
+            },
+            "quantity": 1,
+        }],
+        metadata=metadata,
+        payment_intent_data={"metadata": metadata},
     )
-    session = await stripe_checkout.create_checkout_session(checkout_request)
 
     await db.payment_transactions.insert_one({
-        "session_id": session.session_id,
+        "session_id": session.id,
         "user_id": user["id"],
         "user_email": user["email"],
         "amount": float(quote.total),
@@ -4356,7 +4370,7 @@ async def purchase_single_export(request: Request):
 
     return {
         "url": session.url,
-        "session_id": session.session_id,
+        "session_id": session.id,
         "amount": quote.total,
         "bundle": quote.bundle_key,
         "headline": quote.headline,
@@ -4373,37 +4387,44 @@ async def purchase_pro_subscription(request: Request):
 
     user = await get_current_user(request)
 
-    if not HAS_EMERGENT_INTEGRATIONS:
-        raise HTTPException(status_code=503, detail="Stripe checkout unavailable in local mode")
+    if not HAS_STRIPE_SDK:
+        raise HTTPException(status_code=503, detail="Stripe SDK unavailable")
 
     api_key = os.environ.get("STRIPE_API_KEY")
     if not api_key:
         raise HTTPException(status_code=500, detail="Stripe not configured")
 
-    host_url = str(request.base_url).rstrip("/")
-    webhook_url = f"{host_url}/api/webhook/stripe"
-
-    stripe_checkout = StripeCheckout(api_key=api_key, webhook_url=webhook_url)
+    stripe.api_key = api_key
 
     success_url = f"{origin_url}/payment/success?session_id={{CHECKOUT_SESSION_ID}}&type=pro"
     cancel_url = f"{origin_url}/pricing"
 
-    checkout_request = CheckoutSessionRequest(
-        amount=PRO_MONTHLY_PRICE,
-        currency="nzd",
+    metadata = {
+        "user_id": user["id"],
+        "user_email": user["email"],
+        "product": "pro_subscription"
+    }
+
+    session = stripe.checkout.Session.create(
+        mode="subscription",
+        customer_email=user["email"],
         success_url=success_url,
         cancel_url=cancel_url,
-        metadata={
-            "user_id": user["id"],
-            "user_email": user["email"],
-            "product": "pro_subscription"
-        }
+        line_items=[{
+            "price_data": {
+                "currency": "nzd",
+                "unit_amount": int(round(float(PRO_MONTHLY_PRICE) * 100)),
+                "recurring": {"interval": "month"},
+                "product_data": {"name": "UltimateDesk Pro"},
+            },
+            "quantity": 1,
+        }],
+        metadata=metadata,
+        subscription_data={"metadata": metadata},
     )
 
-    session = await stripe_checkout.create_checkout_session(checkout_request)
-
     await db.payment_transactions.insert_one({
-        "session_id": session.session_id,
+        "session_id": session.id,
         "user_id": user["id"],
         "user_email": user["email"],
         "amount": PRO_MONTHLY_PRICE,
@@ -4414,7 +4435,7 @@ async def purchase_pro_subscription(request: Request):
         "created_at": datetime.now(timezone.utc)
     })
 
-    return {"url": session.url, "session_id": session.session_id}
+    return {"url": session.url, "session_id": session.id}
 
 @exports_router.post("/generate")
 async def generate_export_files(export_req: ExportRequest, request: Request):
@@ -4651,54 +4672,66 @@ async def download_export_file(export_id: str, file_type: str, request: Request)
 # Update webhook to handle new products
 @api_router.post("/webhook/stripe")
 async def stripe_webhook(request: Request):
-    if not HAS_EMERGENT_INTEGRATIONS:
-        raise HTTPException(status_code=503, detail="Stripe webhook unavailable in local mode")
+    if not HAS_STRIPE_SDK:
+        raise HTTPException(status_code=503, detail="Stripe SDK unavailable")
 
-    body = await request.body()
+    payload = await request.body()
     sig = request.headers.get("Stripe-Signature")
 
     api_key = os.environ.get("STRIPE_API_KEY")
-    host_url = str(request.base_url).rstrip("/")
-    webhook_url = f"{host_url}/api/webhook/stripe"
+    if not api_key:
+        raise HTTPException(status_code=500, detail="Stripe not configured")
 
-    stripe_checkout = StripeCheckout(api_key=api_key, webhook_url=webhook_url)
+    stripe.api_key = api_key
+    webhook_secret = os.environ.get("STRIPE_WEBHOOK_SECRET")
 
     try:
-        event = await stripe_checkout.handle_webhook(body, sig)
+        if webhook_secret and sig:
+            event = stripe.Webhook.construct_event(payload, sig, webhook_secret)
+        else:
+            event = json.loads(payload.decode("utf-8"))
 
-        if event.payment_status == "paid":
-            transaction = await db.payment_transactions.find_one({"session_id": event.session_id})
+        event_type = event.get("type")
+        session_obj = (event.get("data") or {}).get("object") or {}
 
-            if transaction:
-                await db.payment_transactions.update_one(
-                    {"session_id": event.session_id},
-                    {"$set": {"status": "complete", "payment_status": "paid", "completed_at": datetime.now(timezone.utc)}}
-                )
+        if event_type in ("checkout.session.completed", "checkout.session.async_payment_succeeded"):
+            session_id = session_obj.get("id")
+            payment_status = session_obj.get("payment_status", "paid")
 
-                product = transaction.get("product", "")
-                user_id = transaction.get("user_id")
+            if session_id and payment_status in ("paid", "no_payment_required"):
+                transaction = await db.payment_transactions.find_one({"session_id": session_id})
 
-                if user_id:
-                    if product == "pro_subscription":
-                        await db.users.update_one(
-                            {"_id": ObjectId(user_id)},
-                            {"$set": {"is_pro": True, "pro_since": datetime.now(timezone.utc)}}
-                        )
-                    elif product == "single_export":
-                        # Add 1 export credit tied to the purchased bundle
-                        bundle = transaction.get("bundle", "dxf")
-                        commercial = bool(transaction.get("commercial_license", False))
-                        await db.export_credits.insert_one({
-                            "user_id": user_id,
-                            "session_id": event.session_id,
-                            "bundle": bundle,
-                            "commercial_license": commercial,
-                            "params_snapshot": transaction.get("params_snapshot"),
-                            "design_name": transaction.get("design_name", "UltimateDesk Design"),
-                            "amount_paid": transaction.get("amount"),
-                            "used": False,
-                            "created_at": datetime.now(timezone.utc),
-                        })
+                if transaction:
+                    await db.payment_transactions.update_one(
+                        {"session_id": session_id},
+                        {"$set": {"status": "complete", "payment_status": "paid", "completed_at": datetime.now(timezone.utc)}}
+                    )
+
+                    product = transaction.get("product", "")
+                    user_id = transaction.get("user_id")
+
+                    if user_id:
+                        if product == "pro_subscription":
+                            await db.users.update_one(
+                                {"_id": ObjectId(user_id)},
+                                {"$set": {"is_pro": True, "pro_since": datetime.now(timezone.utc)}}
+                            )
+                        elif product == "single_export":
+                            existing_credit = await db.export_credits.find_one({"session_id": session_id})
+                            if not existing_credit:
+                                bundle = transaction.get("bundle", "dxf")
+                                commercial = bool(transaction.get("commercial_license", False))
+                                await db.export_credits.insert_one({
+                                    "user_id": user_id,
+                                    "session_id": session_id,
+                                    "bundle": bundle,
+                                    "commercial_license": commercial,
+                                    "params_snapshot": transaction.get("params_snapshot"),
+                                    "design_name": transaction.get("design_name", "UltimateDesk Design"),
+                                    "amount_paid": transaction.get("amount"),
+                                    "used": False,
+                                    "created_at": datetime.now(timezone.utc),
+                                })
 
         return {"received": True}
     except Exception as e:
