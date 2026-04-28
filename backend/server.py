@@ -2648,6 +2648,20 @@ def generate_pdf_bytes(parts: List[Dict], nesting: NestingResult, params: Design
     inside_total = sum(feature_count(p, ("cutouts", "inside_profiles", "internal_profiles", "internal_cutouts")) for p in parts)
     pocket_total = sum(feature_count(p, ("pockets", "rebates", "trays", "pocket_features", "recesses")) for p in parts)
 
+    build_method = str(getattr(params, "build_method", "cnc_router") or "cnc_router").strip().lower()
+    build_method_labels = {
+        "diy_power_tools": "DIY Power Tools",
+        "cnc_router": "CNC Router",
+        "workshop_pro": "Workshop / Pro",
+    }
+    build_method_notes = {
+        "diy_power_tools": "Power-tool build path: use cut list, hardware schedule, drill guidance, and assembly notes; CNC files remain reference only unless verified.",
+        "cnc_router": "CNC build path: verify DXF/SVG/NC outputs, toolpaths, work origin, material thickness, feeds, speeds, and holding strategy before cutting.",
+        "workshop_pro": "Workshop/pro path: use approval drawings, manufacturing pack, hardware schedule, part labels, review sign-off, and export archive workflow.",
+    }
+    build_method_label = build_method_labels.get(build_method, "CNC Router")
+    build_method_note = build_method_notes.get(build_method, build_method_notes["cnc_router"])
+
     from datetime import datetime as _ud_datetime
     safe_design_ref = ''.join(ch for ch in str(design_name).upper() if ch.isalnum())[:12] or 'DESIGN'
     drawing_id = f"UD-MFG-{safe_design_ref}"
@@ -2700,6 +2714,7 @@ def generate_pdf_bytes(parts: List[Dict], nesting: NestingResult, params: Design
         c.setFillColor(colors.HexColor("#444444"))
         c.setFont("Helvetica", 7)
         c.drawString(margin + 28 * mm, top_y - 5 * mm, "Reference file only. Verify all dimensions and CAM toolpaths before cutting.")
+        c.drawString(margin + 28 * mm, top_y - 10 * mm, f"Build method: {build_method_label}. {build_method_note[:118]}")
 
     def draw_specs(top_y: float):
         box_w = (page_width - 2 * margin - 9 * mm) / 4
@@ -2906,6 +2921,20 @@ def generate_review_drawing_pdf_bytes(params: DesignParams, design_name: str = "
     drill_total = sum(len(feature_items(p, ("drill_points", "holes", "joinery_holes", "connector_holes"))) for p in nesting.parts)
     inside_total = sum(len(feature_items(p, ("cutouts", "inside_profiles", "internal_profiles", "internal_cutouts"))) for p in nesting.parts)
     pocket_total = sum(len(feature_items(p, ("pockets", "rebates", "trays", "pocket_features", "recesses"))) for p in nesting.parts)
+
+    build_method = str(getattr(params, "build_method", "cnc_router") or "cnc_router").strip().lower()
+    build_method_labels = {
+        "diy_power_tools": "DIY Power Tools",
+        "cnc_router": "CNC Router",
+        "workshop_pro": "Workshop / Pro",
+    }
+    build_method_notes = {
+        "diy_power_tools": "Power-tool build path: use cut list, hardware schedule, drill guidance, and assembly notes; CNC files remain reference only unless verified.",
+        "cnc_router": "CNC build path: verify DXF/SVG/NC outputs, toolpaths, work origin, material thickness, feeds, speeds, and holding strategy before cutting.",
+        "workshop_pro": "Workshop/pro path: use approval drawings, manufacturing pack, hardware schedule, part labels, review sign-off, and export archive workflow.",
+    }
+    build_method_label = build_method_labels.get(build_method, "CNC Router")
+    build_method_note = build_method_notes.get(build_method, build_method_notes["cnc_router"])
 
     def draw_header(title: str, subtitle: str = ""):
         c.setFillColor(colors.HexColor("#FF3B30"))
@@ -3266,6 +3295,7 @@ def generate_review_drawing_pdf_bytes(params: DesignParams, design_name: str = "
         c.setFont("Helvetica", 7)
         notes = [
             f"Overall: {int(width)}W x {int(depth)}D x {int(height)}H mm",
+            f"Build method: {build_method_label} - {build_method_note[:120]}",
             f"Material: {int(thickness)}mm, sheets required: {nesting.sheets_required}",
             f"Parts: {len(nesting.parts)}, drill features: {drill_total}, inside cuts: {inside_total}, pockets/rebates: {pocket_total}",
             "View is schematic: verify final parts, holes, rebates, and machine file in CNC/CAM outputs.",
@@ -4020,6 +4050,8 @@ def generate_review_drawing_pdf_bytes(params: DesignParams, design_name: str = "
             ("Issue date", signoff_issue_date),
             ("Design name", design_name),
             ("Pack status", "FOR MANUFACTURING REVIEW / PRE-PRODUCTION CHECK"),
+            ("Build method", build_method_label),
+            ("Build guidance", build_method_note[:120]),
             ("CNC status", "CNC geometry controlled by DXF/NC exports; verify in CAM/controller preview"),
             ("Commercial caution", "Not architectural consent drawings or certified engineering documents"),
         ]
@@ -4103,6 +4135,8 @@ def generate_review_drawing_pdf_bytes(params: DesignParams, design_name: str = "
         c.setFont("Helvetica", 8)
         summary = [
             f"Overall size: {int(width)}W x {int(depth)}D x {int(height)}H mm",
+            f"Build method: {build_method_label}",
+            f"Build guidance: {build_method_note[:125]}",
             f"Material thickness: {int(thickness)}mm",
             f"Sheets required: {nesting.sheets_required}",
             f"Parts: {len(nesting.parts)}",
