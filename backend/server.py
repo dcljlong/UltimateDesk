@@ -4691,8 +4691,13 @@ async def stripe_webhook(request: Request):
         else:
             event = json.loads(payload.decode("utf-8"))
 
+        if hasattr(event, "to_dict_recursive"):
+            event = event.to_dict_recursive()
+
         event_type = event.get("type")
         session_obj = (event.get("data") or {}).get("object") or {}
+        if hasattr(session_obj, "to_dict_recursive"):
+            session_obj = session_obj.to_dict_recursive()
 
         if event_type in ("checkout.session.completed", "checkout.session.async_payment_succeeded"):
             session_id = session_obj.get("id")
