@@ -12,15 +12,26 @@ import {
 } from '@phosphor-icons/react';
 import { useAuth } from '../context/AuthContext';
 
+const VIEW_PRESETS = [
+  { key: 'iso', label: 'Iso', title: 'Isometric overview' },
+  { key: 'front', label: 'Front', title: 'Front elevation' },
+  { key: 'back', label: 'Back', title: 'Back / modesty panel view' },
+  { key: 'left', label: 'Left', title: 'Left side view' },
+  { key: 'right', label: 'Right', title: 'Right side view' },
+  { key: 'top', label: 'Top', title: 'Top / desktop layout view' },
+  { key: 'underside', label: 'Under', title: 'Underside / fixing zone view' },
+];
+
 const DeskPreview3D = ({ params, className = '' }) => {
   const { isPro, user } = useAuth();
   const isProtected = !isPro;
   const watermarkText = user?.email
-    ? `UltimateDesk preview — ${user.email}`
-    : 'UltimateDesk — preview only';
+    ? `UltimateDesk preview â€” ${user.email}`
+    : 'UltimateDesk â€” preview only';
 
   const [exploded, setExploded] = useState(false);
   const [showDimensions, setShowDimensions] = useState(false);
+  const [viewMode, setViewMode] = useState('iso');
   const [viewTransform, setViewTransform] = useState({ panX: 0, panY: 0, zoom: 1 });
   const dragStartRef = useRef(null);
   const canvasRef = useRef(null);
@@ -95,10 +106,48 @@ const DeskPreview3D = ({ params, className = '' }) => {
     const isoX = 0.58 * unit;
     const isoY = 0.22 * unit;
 
-    const project = (x, y, z) => ({
-      x: centerX + (x - z) * isoX,
-      y: floorY - y * unit + (x + z) * isoY,
-    });
+    const project = (x, y, z) => {
+      const zCenter = z - (deskDepth / 2);
+
+      switch (viewMode) {
+        case 'front':
+          return {
+            x: centerX + x * unit * 0.72,
+            y: floorY - y * unit + zCenter * unit * 0.035,
+          };
+        case 'back':
+          return {
+            x: centerX - x * unit * 0.72,
+            y: floorY - y * unit - zCenter * unit * 0.035,
+          };
+        case 'left':
+          return {
+            x: centerX + zCenter * unit * 0.82,
+            y: floorY - y * unit - x * unit * 0.035,
+          };
+        case 'right':
+          return {
+            x: centerX - zCenter * unit * 0.82,
+            y: floorY - y * unit + x * unit * 0.035,
+          };
+        case 'top':
+          return {
+            x: centerX + x * unit * 0.72,
+            y: floorY - zCenter * unit * 0.62 - y * unit * 0.035,
+          };
+        case 'underside':
+          return {
+            x: centerX + x * unit * 0.72,
+            y: floorY + zCenter * unit * 0.62 + y * unit * 0.035,
+          };
+        case 'iso':
+        default:
+          return {
+            x: centerX + (x - z) * isoX,
+            y: floorY - y * unit + (x + z) * isoY,
+          };
+      }
+    };
 
     const shadeHex = (hex, amount) => {
       const clean = hex.replace('#', '');
@@ -653,7 +702,7 @@ const DeskPreview3D = ({ params, className = '' }) => {
       }
       ctx.restore();
     }
-  }, [colors, exploded, isProtected, params, viewTransform, watermarkText]);
+  }, [colors, exploded, isProtected, params, viewMode, viewTransform, watermarkText]);
 
   const roundToRange = (value, step = 50) => `~${Math.round(value / step) * step}`;
   const fmtDim = (value) => (isProtected ? roundToRange(value) : `${value}`);
@@ -705,6 +754,27 @@ const DeskPreview3D = ({ params, className = '' }) => {
       ...prev,
       zoom: Math.min(1.8, Math.max(0.65, Number((prev.zoom + zoomDelta).toFixed(2)))),
     }));
+  };
+
+  const applyViewPreset = (mode) => {
+    setViewMode(mode);
+    setViewTransform({
+      panX: 0,
+      panY: mode === 'top' || mode === 'underside' ? 35 : 0,
+      zoom: mode === 'top' || mode === 'underside' ? 0.92 : 1,
+    });
+  };
+
+  const zoomPreview = (amount) => {
+    setViewTransform((prev) => ({
+      ...prev,
+      zoom: Math.min(1.8, Math.max(0.65, Number((prev.zoom + amount).toFixed(2)))),
+    }));
+  };
+
+  const resetPreviewView = () => {
+    setViewMode('iso');
+    setViewTransform({ panX: 0, panY: 0, zoom: 1 });
   };
 
   return (
@@ -831,9 +901,53 @@ const DeskPreview3D = ({ params, className = '' }) => {
         </div>
       </div>
 
+      <div className="absolute bottom-16 right-4 z-10 glass-surface rounded-lg p-3 w-[320px] max-w-[calc(100%-2rem)]">
+        <div className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-secondary)] mb-2">
+          View controls
+        </div>
+        <div className="grid grid-cols-4 gap-1">
+          {VIEW_PRESETS.map((preset) => (
+            <button
+              key={preset.key}
+              type="button"
+              onClick={() => applyViewPreset(preset.key)}
+              title={preset.title}
+              className={`px-2 py-1.5 rounded-md text-[11px] font-bold transition-smooth ${
+                viewMode === preset.key
+                  ? 'bg-[var(--primary)] text-white shadow-sm'
+                  : 'bg-white/80 text-slate-700 hover:bg-white'
+              }`}
+            >
+              {preset.label}
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => zoomPreview(0.1)}
+            className="px-2 py-1.5 rounded-md text-[11px] font-bold bg-white/80 text-slate-700 hover:bg-white"
+          >
+            Zoom +
+          </button>
+          <button
+            type="button"
+            onClick={() => zoomPreview(-0.1)}
+            className="px-2 py-1.5 rounded-md text-[11px] font-bold bg-white/80 text-slate-700 hover:bg-white"
+          >
+            Zoom -
+          </button>
+          <button
+            type="button"
+            onClick={resetPreviewView}
+            className="px-2 py-1.5 rounded-md text-[11px] font-bold bg-white/80 text-slate-700 hover:bg-white"
+          >
+            Reset
+          </button>
+        </div>
+      </div>
+
       <div className="absolute bottom-4 right-4 z-10 glass-surface rounded-lg px-3 py-2 flex items-center gap-2">
         <Cube size={16} className="text-[var(--primary)]" />
-        <span className="text-xs font-medium">Drag / scroll to inspect</span>
+        <span className="text-xs font-medium">Select view / drag / scroll</span>
       </div>
 
       <canvas
@@ -845,8 +959,8 @@ const DeskPreview3D = ({ params, className = '' }) => {
         onPointerUp={stopDragging}
         onPointerLeave={stopDragging}
         onWheel={handleWheel}
-        onDoubleClick={() => setViewTransform({ panX: 0, panY: 0, zoom: 1 })}
-        title="Drag to move, mouse wheel to zoom, double-click to reset"
+        onDoubleClick={resetPreviewView}
+        title="Use view buttons, drag to move, mouse wheel to zoom, double-click to reset"
         style={{ touchAction: 'none' }}
         className="w-full h-full object-contain rounded-lg cursor-grab active:cursor-grabbing"
       />
@@ -855,3 +969,5 @@ const DeskPreview3D = ({ params, className = '' }) => {
 };
 
 export default DeskPreview3D;
+
+
