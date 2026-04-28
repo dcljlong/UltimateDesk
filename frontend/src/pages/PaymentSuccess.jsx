@@ -148,6 +148,10 @@ const PaymentSuccess = () => {
               Your checkout page has returned, but payment confirmation is still pending.
               This is normal if the payment webhook is still processing.
             </p>
+            <p className="text-sm text-[var(--text-secondary)] mb-4">
+              If this does not update shortly, contact support@ultimatedesk.co.nz with your account email
+              and checkout time so we can review access or reissue files where practical.
+            </p>
             <p className="text-xs text-[var(--text-secondary)] mb-6">
               {lastMessage || 'We will keep checking for a short time.'}
             </p>
@@ -225,7 +229,11 @@ const PaymentSuccess = () => {
               We could not confirm this checkout session.
             </p>
             <p className="text-xs text-[var(--text-secondary)] mb-6">
-              {lastMessage || 'If you were charged, contact support and we will sort it out.'}
+              {lastMessage || 'If you were charged, contact support@ultimatedesk.co.nz and we will review the transaction.'}
+            </p>
+            <p className="text-sm text-[var(--text-secondary)] mb-6">
+              We will help resolve payment, access, or file-generation issues. Nothing on this page limits
+              any rights you may have under applicable consumer law.
             </p>
 
             <div className="space-y-3">

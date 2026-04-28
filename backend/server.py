@@ -4489,7 +4489,9 @@ async def generate_export_files(export_req: ExportRequest, request: Request):
     disclaimer = (
         "IMPORTANT: These files are high-quality REFERENCE files. "
         "You MUST verify all toolpaths in your CAM software (VCarve, Fusion 360, etc.) before cutting. "
-        "UltimateDesk is not responsible for machine damage, material waste, or injury from unverified toolpaths."
+        "UltimateDesk is not responsible for machine damage, material waste, or injury from unverified toolpaths. "
+        "If payment, download, or export generation fails, contact support@ultimatedesk.co.nz so we can review access or reissue available files where practical. "
+        "This does not limit any rights you may have under applicable consumer law."
     )
 
     return {

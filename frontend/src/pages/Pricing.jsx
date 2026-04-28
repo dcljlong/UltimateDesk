@@ -322,6 +322,12 @@ const Pricing = () => {
               Exports are reference files for real-world CNC workflows. Always verify dimensions,
               nesting, tooling and CAM toolpaths before cutting material.
             </p>
+            <p className="text-xs text-[var(--text-secondary)] mt-3">
+              If checkout, file access, or export generation does not work as expected, contact
+              support@ultimatedesk.co.nz. We will help resolve access issues, reissue available
+              files where practical, or review the transaction. Nothing here limits any rights
+              you may have under applicable consumer law.
+            </p>
           </div>
         </motion.div>
       </main>

@@ -796,6 +796,8 @@ const ExportDialog = ({ isOpen, onClose, params, designName }) => {
 
             <p className="text-xs text-center text-[var(--text-secondary)]">
               Includes: {includedFiles.map((f) => (FILE_META[f]?.label || f)).join(' + ')} · Files expire 24h after generation · Verify in CAM before cutting
+              <br />
+              If payment, download, or export generation fails, contact support@ultimatedesk.co.nz. We will help resolve access or file issues and review the transaction where needed.
             </p>
           </div>
         )}
