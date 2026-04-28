@@ -50,7 +50,8 @@ const defaultParams = {
   width: 1800,
   depth: 800,
   height: 750,
-  desk_type: 'gaming',
+  desk_type: 'gaming',
+
   build_method: 'cnc_router',
   monitor_count: 1,
   has_rgb_channels: false,
@@ -214,7 +215,7 @@ const Designer = () => {
     setExportDialogOpen(true);
   };
 
-  // Live price pill ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â refreshes when design changes
+  // Live price pill refreshes when design changes
   useEffect(() => {
     const t = setTimeout(async () => {
       try {
@@ -391,9 +392,9 @@ const Designer = () => {
               {cncOutput?.nesting ? (
                 <>
                   <span>{cncOutput.nesting.sheets_required} sheet{cncOutput.nesting.sheets_required === 1 ? '' : 's'}</span>
-                  <span>â€¢</span>
+                  <span>|</span>
                   <span>{cncOutput.nesting.parts.length} parts</span>
-                  <span>â€¢</span>
+                  <span>|</span>
                   <span>{cncOutput.nesting.waste_percentage}% waste</span>
                 </>
               ) : (
@@ -402,14 +403,14 @@ const Designer = () => {
 
               {params.is_oversize && (
                 <>
-                  <span>â€¢</span>
+                  <span>|</span>
                   <span className="font-bold text-amber-400">Oversize split top</span>
                 </>
               )}
 
               {params.requires_centre_support && (
                 <>
-                  <span>â€¢</span>
+                  <span>|</span>
                   <span className="font-bold text-amber-400">Centre support required</span>
                 </>
               )}

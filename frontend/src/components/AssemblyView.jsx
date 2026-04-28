@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 
 const AssemblyView = ({ params }) => {
   const width = Number(params?.width || 1800);
@@ -13,7 +13,7 @@ const AssemblyView = ({ params }) => {
     ['Desktop top', isOversize ? '2 panels, left + right' : '1 panel', 'Sits on frame. User side must face open knee zone.'],
     ['Leg posts', '4 posts', 'Front/rear corner supports.'],
     ['Rear upper rail', isOversize ? 'Split left + right' : '1 rail', 'Rear/service side rail under the back edge.'],
-    ['Front lower rail', isOversize ? 'Split left + right' : '1 rail', 'Low front rail. Keep user-side knee clearance open.'],
+    ['Rear lower stretcher', isOversize ? 'Split left + right' : '1 rail', 'Low rear/service-side stretcher. Keep user-side knee clearance open.'],
     ['Back modesty panel', '1 panel', 'Rear/service side panel. Do not place on sitting side.'],
     ['Cable tray', hasCableTray ? 'Base, front, back, ends' : 'Not selected', 'Rear/service side only.'],
     ['Desktop centre join plate', isOversize ? 'Required' : 'Not required', 'Joins split top panels from underside.'],

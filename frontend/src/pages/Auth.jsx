@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Cube, Eye, EyeSlash, ArrowLeft } from '@phosphor-icons/react';
@@ -140,7 +140,7 @@ const Auth = () => {
                   id="password"
                   name="password"
                   type={showPassword ? 'text' : 'password'}
-                  placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
+                  placeholder="********"
                   value={formData.password}
                   onChange={handleChange}
                   required

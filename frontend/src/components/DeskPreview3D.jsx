@@ -26,8 +26,8 @@ const DeskPreview3D = ({ params, className = '' }) => {
   const { isPro, user } = useAuth();
   const isProtected = !isPro;
   const watermarkText = user?.email
-    ? `UltimateDesk preview â€” ${user.email}`
-    : 'UltimateDesk â€” preview only';
+    ? `UltimateDesk preview - ${user.email}`
+    : 'UltimateDesk - preview only';
 
   const [exploded, setExploded] = useState(false);
   const [showDimensions, setShowDimensions] = useState(false);
