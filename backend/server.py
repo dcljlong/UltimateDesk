@@ -815,215 +815,69 @@ Rules:
 def validate_design_v1(params: DesignParams, parts: List[Dict[str, Any]]):
     warnings = []
 
-    if params.width > 1800:
-        warnings.append("Span risk: consider centre support")
+    if params.width > 1800 and not any(p.get("name") == "Centre Support Panel" for p in parts):
+        warnings.append("Span risk: centre support recommended for desks over 1800mm")
 
     if not any(p.get("role") == "anti_racking" for p in parts):
-        warnings.append("Racking risk: no rear bracing")
+        warnings.append("Racking risk: rear stretcher or shear panel required")
 
     if getattr(params, "has_cable_management", False):
-        warnings.append("Cable tray is not structural")
+        warnings.append("Cable tray is an accessory module only, not a structural support")
 
     return warnings
 
 
+# === BUILD SYSTEM V1: MODULAR SLOT ENGINE ===
+def make_part(name: str, width: int, height: int, category: str, role: str, description: str, fixing: str):
+    return {
+        "name": name,
+        "width": int(width),
+        "height": int(height),
+        "category": category,
+        "role": role,
+        "description": description,
+        "fixing": fixing,
+    }
 
 
-# === BUILD SYSTEM V1: CENTRE SUPPORT ===
-def add_centre_support(parts: List[Dict[str, Any]], params: DesignParams):
-    if params.width > 1800:
-        parts.append({
-            "name": "Centre Support Panel",
-            "width": params.depth,
-            "height": params.height - params.material_thickness,
-            "category": "structure",
-            "role": "vertical_support"
-        })
-    if params.width > 1800:
-        parts.append({
-            "name": "Centre Support Panel",
-            "width": params.depth,
-            "height": params.height - params.material_thickness,
-            "category": "structure",
-            "role": "vertical_support"
-        })
-    
-    return parts
-
-
-# === BUILD SYSTEM V1: SHEAR PANEL OPTION ===
-def add_shear_panel(parts: List[Dict[str, Any]], params: DesignParams):
-    if params.width >= 1600:
-        parts.append({
-            "name": "Rear Shear Panel",
-            "width": params.width - (params.material_thickness * 2),
-            "height": 400,
-            "category": "structure",
-            "role": "anti_racking"
-        })
-    
-    return parts
-
-
-# === BUILD SYSTEM V1: SHEAR PANEL (SAFE) ===
-def add_shear_panel_once(parts: List[Dict[str, Any]], params: DesignParams):
-    if params.width >= 1600 and not any(p.get("name") == "Rear Shear Panel" for p in parts):
-        parts.append({
-            "name": "Rear Shear Panel",
-            "width": params.width - (params.material_thickness * 2),
-            "height": 400,
-            "category": "structure",
-            "role": "anti_racking"
-        })
-    
-    return parts
-
-
-# === BUILD SYSTEM V1: FRONT LOCKING RAIL ===
-def add_front_locking_rail(parts: List[Dict[str, Any]], params: DesignParams):
-    parts.append({
-        "name": "Front Locking Rail",
-        "width": params.width - (params.material_thickness * 2),
-        "height": 80,
-        "category": "structure",
-        "role": "stiffening"
-    })
-    return parts
-
-# === BUILD SYSTEM V1: PART DESCRIPTIONS ===
-def annotate_parts(parts: List[Dict[str, Any]]):
-    for p in parts:
-        role = p.get("role", "")
-
-        if role == "vertical_support":
-            p["description"] = "Side panel supports desktop load and provides slot connection"
-            p["fixing"] = "Slot into desktop and rear stretcher"
-
-        elif role == "anti_racking":
-            p["description"] = "Rear stretcher prevents racking and locks frame square"
-            p["fixing"] = "Slots into both side panels"
-
-        elif role == "load_surface":
-            p["description"] = "Desktop surface transfers load into side panels"
-            p["fixing"] = "Sits on and locks into side panels"
-
-    if params.width > 1800:
-        parts.append({
-            "name": "Centre Support Panel",
-            "width": params.depth,
-            "height": params.height - params.material_thickness,
-            "category": "structure",
-            "role": "vertical_support"
-        })
-    
-    return parts
-
-# === BUILD SYSTEM V1: SLOT JOINERY (BASIC) ===
-def add_basic_slot_joinery(parts: List[Dict[str, Any]], params: DesignParams):
+def add_slot_joinery(parts: List[Dict[str, Any]], params: DesignParams):
     t = params.material_thickness
 
     for p in parts:
         if p.get("role") == "vertical_support":
-            p["slots"] = [{
-                "type": "through_slot",
-                "width": t,
-                "depth": t,
-                "position": "top_edge"
-            }]
+            p["slots"] = [{"type": "through_slot", "width": t, "depth": t, "position": "top_edge"}]
 
-        if p.get("role") == "anti_racking":
-            p["slots"] = [{
-                "type": "through_slot",
-                "width": t,
-                "depth": t,
-                "position": "side_edges"
-            }]
+        if p.get("role") in ("anti_racking", "stiffening"):
+            p["slots"] = [{"type": "through_slot", "width": t, "depth": t, "position": "side_edges"}]
 
-    if params.width > 1800:
-        parts.append({
-            "name": "Centre Support Panel",
-            "width": params.depth,
-            "height": params.height - params.material_thickness,
-            "category": "structure",
-            "role": "vertical_support"
-        })
-    
     return parts
 
-# === BUILD SYSTEM V1: MODULAR SLOT ===
-def calculate_modular_slot_parts(params: DesignParams) -> List[Dict[str, Any]]:
-    parts: List[Dict[str, Any]] = []
 
+def calculate_modular_slot_parts(params: DesignParams) -> List[Dict[str, Any]]:
     width = params.width
     depth = params.depth
     height = params.height
     t = params.material_thickness
+    panel_h = height - t
 
-    leg_height = height - t
+    parts: List[Dict[str, Any]] = [
+        make_part("Side Panel Left", depth, panel_h, "structure", "vertical_support", "Left side panel supports the desktop and accepts rear/front locking parts.", "Slots into desktop underside and rear/front locking parts."),
+        make_part("Side Panel Right", depth, panel_h, "structure", "vertical_support", "Right side panel supports the desktop and accepts rear/front locking parts.", "Slots into desktop underside and rear/front locking parts."),
+        make_part("Desktop Top", width, depth, "primary_surface", "load_surface", "Main desktop surface transferring load into side panels.", "Locks down over the side panels and support parts."),
+        make_part("Rear Stretcher", width - (t * 2), 120, "structure", "anti_racking", "Rear stretcher stops side-to-side racking and keeps the desk square.", "Slots into both side panels at the rear/service side."),
+        make_part("Front Locking Rail", width - (t * 2), 80, "structure", "stiffening", "Front rail stiffens the open side and helps lock the side panels parallel.", "Slots into both side panels at the front/user side."),
+    ]
 
-    parts.append({
-        "name": "Side Panel Left",
-        "width": depth,
-        "height": leg_height,
-        "category": "structure",
-        "role": "vertical_support"
-    })
+    if width >= 1600:
+        parts.append(make_part("Rear Shear Panel", width - (t * 2), 400, "structure", "anti_racking", "Rear shear panel gives stronger anti-racking support for wider desks.", "Slots or screws into both side panels on the rear/service side."))
 
-    parts.append({
-        "name": "Side Panel Right",
-        "width": depth,
-        "height": leg_height,
-        "category": "structure",
-        "role": "vertical_support"
-    })
-
-    parts.append({
-        "name": "Desktop Top",
-        "width": width,
-        "height": depth,
-        "category": "primary_surface",
-        "role": "load_surface"
-    })
-
-    parts.append({
-        "name": "Rear Stretcher",
-        "width": width - (t * 2),
-        "height": 120,
-        "category": "structure",
-        "role": "anti_racking"
-    })
-
-    if params.width > 1800:
-        parts.append({
-            "name": "Centre Support Panel",
-            "width": params.depth,
-            "height": params.height - params.material_thickness,
-            "category": "structure",
-            "role": "vertical_support"
-        })
-    
-    return parts
-
-
-# === BUILD SYSTEM V1: VALIDATION ===
-def validate_design_v1(params: DesignParams, parts: List[Dict[str, Any]]):
-    warnings = []
-
-    width = params.width
-
-    # Span risk
     if width > 1800:
-        warnings.append("Span risk: consider centre support or thicker material")
+        parts.append(make_part("Centre Support Panel", depth, panel_h, "structure", "vertical_support", "Centre support reduces desktop span and sag on wide desks.", "Slots under desktop between side panels."))
 
-    # Racking risk
-    if not any(p.get("role") == "anti_racking" for p in parts):
-        warnings.append("Racking risk: no rear bracing system")
+    parts = add_slot_joinery(parts, params)
+    params.structural_warnings = validate_design_v1(params, parts)
 
-    # Cable misuse
-    if getattr(params, "has_cable_management", False):
-        warnings.append("Cable tray is not structural")
-
-    return warnings
+    return parts
 
 
 # === BUILD SYSTEM V1 ROUTER ===
@@ -1033,10 +887,7 @@ def calculate_parts_v1(params: DesignParams) -> List[Dict[str, Any]]:
     if build_system == "modular_slot":
         return calculate_modular_slot_parts(params)
 
-    if build_system == "metal_legs":
-        return calculate_desk_parts_legacy(params)
-
-    if build_system == "cnc_frame":
+    if build_system in ("metal_legs", "cnc_frame"):
         return calculate_desk_parts_legacy(params)
 
     return calculate_modular_slot_parts(params)
@@ -5316,6 +5167,7 @@ async def startup():
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
+
 
 
 
