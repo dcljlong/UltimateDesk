@@ -1025,20 +1025,23 @@ def validate_design_v1(params: DesignParams, parts: List[Dict[str, Any]]):
 
     return warnings
 
+
 # === BUILD SYSTEM V1 ROUTER ===
 def calculate_parts_v1(params: DesignParams) -> List[Dict[str, Any]]:
-    if getattr(params, 'build_system', 'cnc_frame') == "modular_slot":
+    build_system = getattr(params, 'build_system', 'modular_slot')
+
+    if build_system == "modular_slot":
         return calculate_modular_slot_parts(params)
 
-    elif params.build_system == "metal_legs":
-        return calculate_metal_leg_parts(params)
+    if build_system == "metal_legs":
+        return calculate_desk_parts_legacy(params)
 
-    elif params.build_system == "cnc_frame":
-        return calculate_parts_v1(params)
+    if build_system == "cnc_frame":
+        return calculate_desk_parts_legacy(params)
 
-    return calculate_parts_v1(params)
+    return calculate_modular_slot_parts(params)
 
-def calculate_parts_v1(params: DesignParams) -> List[Dict[str, Any]]:
+def calculate_desk_parts_legacy(params: DesignParams) -> List[Dict[str, Any]]:
     """Generate export parts with CNC feature metadata: drill points, pockets, and cutouts."""
     parts: List[Dict[str, Any]] = []
 
@@ -5313,6 +5316,7 @@ async def startup():
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
+
 
 
 
