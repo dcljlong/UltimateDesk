@@ -4300,7 +4300,7 @@ def generate_review_drawing_pdf_bytes(params: DesignParams, design_name: str = "
     draw_plan_page()
     draw_front_elevation()
     draw_side_elevation()
-    draw_isometric_assembly_page()
+    # draw_isometric_assembly_page()  # DISABLED - legacy frame system
     draw_exploded_assembly_page()
     draw_joint_detail_diagrams_page()
     draw_assembly_details_page()
@@ -5166,6 +5166,7 @@ async def startup():
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
+
 
 
 
