@@ -828,6 +828,27 @@ def validate_design_v1(params: DesignParams, parts: List[Dict[str, Any]]):
 
 
 
+
+# === BUILD SYSTEM V1: CENTRE SUPPORT ===
+def add_centre_support(parts: List[Dict[str, Any]], params: DesignParams):
+    if params.width > 1800:
+        parts.append({
+            "name": "Centre Support Panel",
+            "width": params.depth,
+            "height": params.height - params.material_thickness,
+            "category": "structure",
+            "role": "vertical_support"
+        })
+    if params.width > 1800:
+        parts.append({
+            "name": "Centre Support Panel",
+            "width": params.depth,
+            "height": params.height - params.material_thickness,
+            "category": "structure",
+            "role": "vertical_support"
+        })
+    return parts
+
 # === BUILD SYSTEM V1: PART DESCRIPTIONS ===
 def annotate_parts(parts: List[Dict[str, Any]]):
     for p in parts:
@@ -845,6 +866,14 @@ def annotate_parts(parts: List[Dict[str, Any]]):
             p["description"] = "Desktop surface transfers load into side panels"
             p["fixing"] = "Sits on and locks into side panels"
 
+    if params.width > 1800:
+        parts.append({
+            "name": "Centre Support Panel",
+            "width": params.depth,
+            "height": params.height - params.material_thickness,
+            "category": "structure",
+            "role": "vertical_support"
+        })
     return parts
 
 # === BUILD SYSTEM V1: SLOT JOINERY (BASIC) ===
@@ -868,6 +897,14 @@ def add_basic_slot_joinery(parts: List[Dict[str, Any]], params: DesignParams):
                 "position": "side_edges"
             }]
 
+    if params.width > 1800:
+        parts.append({
+            "name": "Centre Support Panel",
+            "width": params.depth,
+            "height": params.height - params.material_thickness,
+            "category": "structure",
+            "role": "vertical_support"
+        })
     return parts
 
 # === BUILD SYSTEM V1: MODULAR SLOT ===
@@ -913,6 +950,14 @@ def calculate_modular_slot_parts(params: DesignParams) -> List[Dict[str, Any]]:
         "role": "anti_racking"
     })
 
+    if params.width > 1800:
+        parts.append({
+            "name": "Centre Support Panel",
+            "width": params.depth,
+            "height": params.height - params.material_thickness,
+            "category": "structure",
+            "role": "vertical_support"
+        })
     return parts
 
 
@@ -1257,6 +1302,14 @@ def calculate_desk_parts(params: DesignParams) -> List[Dict[str, Any]]:
         add_part("VESA Gusset Left", 120, 120, drill_points=corner_drills("vesa left gusset fixing", 120, 120, inset=24, diameter=5, depth_value=12))
         add_part("VESA Gusset Right", 120, 120, drill_points=corner_drills("vesa right gusset fixing", 120, 120, inset=24, diameter=5, depth_value=12))
 
+    if params.width > 1800:
+        parts.append({
+            "name": "Centre Support Panel",
+            "width": params.depth,
+            "height": params.height - params.material_thickness,
+            "category": "structure",
+            "role": "vertical_support"
+        })
     return parts
 
 
@@ -5215,6 +5268,9 @@ async def startup():
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
+
+
+
 
 
 
