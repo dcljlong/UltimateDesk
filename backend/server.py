@@ -827,6 +827,26 @@ def validate_design_v1(params: DesignParams, parts: List[Dict[str, Any]]):
     return warnings
 
 
+
+# === BUILD SYSTEM V1: PART DESCRIPTIONS ===
+def annotate_parts(parts: List[Dict[str, Any]]):
+    for p in parts:
+        role = p.get("role", "")
+
+        if role == "vertical_support":
+            p["description"] = "Side panel supports desktop load and provides slot connection"
+            p["fixing"] = "Slot into desktop and rear stretcher"
+
+        elif role == "anti_racking":
+            p["description"] = "Rear stretcher prevents racking and locks frame square"
+            p["fixing"] = "Slots into both side panels"
+
+        elif role == "load_surface":
+            p["description"] = "Desktop surface transfers load into side panels"
+            p["fixing"] = "Sits on and locks into side panels"
+
+    return parts
+
 # === BUILD SYSTEM V1: SLOT JOINERY (BASIC) ===
 def add_basic_slot_joinery(parts: List[Dict[str, Any]], params: DesignParams):
     t = params.material_thickness
@@ -5195,6 +5215,7 @@ async def startup():
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
+
 
 
 
