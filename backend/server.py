@@ -878,6 +878,18 @@ def add_shear_panel_once(parts: List[Dict[str, Any]], params: DesignParams):
     
     return parts
 
+
+# === BUILD SYSTEM V1: FRONT LOCKING RAIL ===
+def add_front_locking_rail(parts: List[Dict[str, Any]], params: DesignParams):
+    parts.append({
+        "name": "Front Locking Rail",
+        "width": params.width - (params.material_thickness * 2),
+        "height": 80,
+        "category": "structure",
+        "role": "stiffening"
+    })
+    return parts
+
 # === BUILD SYSTEM V1: PART DESCRIPTIONS ===
 def annotate_parts(parts: List[Dict[str, Any]]):
     for p in parts:
@@ -5301,6 +5313,8 @@ async def startup():
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
+
+
 
 
 
