@@ -1109,8 +1109,8 @@ def calculate_desk_parts_legacy(params: DesignParams) -> List[Dict[str, Any]]:
         add_part("Rear Stretcher", clear_span_x, 42, drill_points=rear_rail_holes(clear_span_x, "rear"))
         add_part("Rear Stretcher", clear_span_x, 30, drill_points=lower_rail_holes(clear_span_x, "rear lower"))
 
-    add_part("Left Side Rail", clear_span_y, 30, drill_points=lower_rail_holes(clear_span_y, "left side"))
-    add_part("Right Side Rail", clear_span_y, 30, drill_points=lower_rail_holes(clear_span_y, "right side"))
+    add_part("Left Side Panel", clear_span_y, 30, drill_points=lower_rail_holes(clear_span_y, "left side"))
+    add_part("Right Side Panel", clear_span_y, 30, drill_points=lower_rail_holes(clear_span_y, "right side"))
 
     if requires_centre_support:
         add_part("Centre Support Post", leg_size, leg_h, drill_points=leg_holes("centre support"))
@@ -1230,7 +1230,7 @@ def build_part_connections(parts):
     for p in parts:
         name = p.get("name", "").lower()
 
-        # Rail to leg connections
+        # Slot-to-panel connections
         if "rail" in name:
             for leg in parts:
                 if "leg" in leg.get("name", "").lower():
@@ -3309,7 +3309,7 @@ def generate_review_drawing_pdf_bytes(params: DesignParams, design_name: str = "
             stroke="#555555",
         )
 
-        # Side rails.
+        # Side panels / front locking members.
         side_span_y = clear_span_y
         left_x = leg_inset_x
         right_x = width - leg_inset_x - leg_size
@@ -5166,6 +5166,7 @@ async def startup():
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
+
 
 
 
