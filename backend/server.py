@@ -3191,7 +3191,7 @@ def generate_review_drawing_pdf_bytes(params: DesignParams, design_name: str = "
         leg_h = (height - thickness) * scale
         draw_part_rect(x0 + leg_inset_y * scale, y0, leg_w, leg_h, "Front leg", "#E7F0FF", "#005BFF")
         draw_part_rect(x0 + (depth - leg_inset_y - leg_size) * scale, y0, leg_w, leg_h, "Rear leg", "#E7F0FF", "#005BFF")
-        draw_part_rect(x0 + (leg_inset_y + leg_size) * scale, y0 + 120 * scale, clear_span_y * scale, 30 * scale, "Side rail", "#F4F4F4")
+        draw_part_rect(x0 + (leg_inset_y + leg_size) * scale, y0 + 120 * scale, clear_span_y * scale, 30 * scale, "Side panel", "#F4F4F4")
 
         dim_line(x0, y0 - 10 * mm, x0 + w, y0 - 10 * mm, f"{int(depth)}mm depth", offset=3 * mm)
         dim_line(x0 - 10 * mm, y0, x0 - 10 * mm, y0 + h, f"{int(height)}mm high", offset=3 * mm)
@@ -3317,7 +3317,7 @@ def generate_review_drawing_pdf_bytes(params: DesignParams, design_name: str = "
         draw_iso_box(
             left_x, side_y, 120,
             30, side_span_y, 30,
-            "Left side rail",
+            "Left side panel",
             fill_top="#F7F7F7",
             fill_left="#E8E8E8",
             fill_right="#DADADA",
@@ -3326,7 +3326,7 @@ def generate_review_drawing_pdf_bytes(params: DesignParams, design_name: str = "
         draw_iso_box(
             right_x, side_y, 120,
             30, side_span_y, 30,
-            "Right side rail",
+            "Right side panel",
             fill_top="#F7F7F7",
             fill_left="#E8E8E8",
             fill_right="#DADADA",
@@ -3615,7 +3615,7 @@ def generate_review_drawing_pdf_bytes(params: DesignParams, design_name: str = "
                 "Calculated" if desktop_count else "Manual check",
             ),
             (
-                "Rail to side panel joints",
+                "Slot-to-panel structural joints",
                 "Screws/dowels/cam/confirm hardware",
                 qty_text(rail_leg_count, rail_leg_parts),
                 "Clamp square; confirm edge distance",
@@ -3976,8 +3976,8 @@ def generate_review_drawing_pdf_bytes(params: DesignParams, design_name: str = "
         part_box(cx - desk_w / 2, desktop_y, desk_w, top_h, "STEP 3 - DESKTOP TOP", "#FFFFFF", "#111111")
         label("Lift/position desktop after frame is square", cx, desktop_y + top_h + 5 * mm, size=7)
 
-        part_box(cx - desk_w * 0.42, rail_y + 16 * mm, desk_w * 0.84, rail_h, "STEP 2 - Rear Stretcher", "#F4F4F4", "#555555")
-        part_box(cx - desk_w * 0.42, rail_y - 4 * mm, desk_w * 0.84, rail_h, "STEP 2 - Rear Stretcher", "#F4F4F4", "#555555")
+        part_box(cx - desk_w * 0.42, rail_y + 16 * mm, desk_w * 0.84, rail_h, "STEP 1 - Rear Stretcher", "#F4F4F4", "#555555")
+        part_box(cx - desk_w * 0.42, rail_y - 4 * mm, desk_w * 0.84, rail_h, "STEP 1 - Rear Stretcher", "#F4F4F4", "#555555")
         part_box(cx - desk_w * 0.52, rail_y + 2 * mm, 18 * mm, rail_h * 2.2, "Side Panel", "#F4F4F4", "#555555")
         part_box(cx + desk_w * 0.52 - 18 * mm, rail_y + 2 * mm, 18 * mm, rail_h * 2.2, "Side Panel", "#F4F4F4", "#555555")
         label("Clamp frame square before desktop fixing", cx, rail_y + 36 * mm, size=7)
@@ -4093,7 +4093,7 @@ def generate_review_drawing_pdf_bytes(params: DesignParams, design_name: str = "
                 "Confirm edge distance before final fixing.",
                 "Do not over-tighten into board edge.",
             ]),
-            ("Side rail to leg frame", "Side Panelocks front/rear leg frames together.", [
+            ("Side panel locking", "Side panels lock the front rail and rear stretcher together.", [
                 "Confirm handed side before assembly.",
                 "Fit rails before desktop.",
                 "Check frame is not racked.",
@@ -5166,6 +5166,7 @@ async def startup():
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
+
 
 
 
