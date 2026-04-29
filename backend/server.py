@@ -1089,10 +1089,10 @@ def calculate_desk_parts_legacy(params: DesignParams) -> List[Dict[str, Any]]:
         drill(f"{label} lower rail fixing A", leg_size / 2, 85, 5, 12),
         drill(f"{label} lower rail fixing B", leg_size / 2, 145, 5, 12),
     ]
-    add_part("Leg Post FL", leg_size, leg_h, drill_points=leg_holes("FL leg"))
-    add_part("Leg Post FR", leg_size, leg_h, drill_points=leg_holes("FR leg"))
-    add_part("Leg Post RL", leg_size, leg_h, drill_points=leg_holes("RL leg"))
-    add_part("Leg Post RR", leg_size, leg_h, drill_points=leg_holes("RR leg"))
+    add_part("side panel FL", leg_size, leg_h, drill_points=leg_holes("FL leg"))
+    add_part("side panel FR", leg_size, leg_h, drill_points=leg_holes("FR leg"))
+    add_part("side panel RL", leg_size, leg_h, drill_points=leg_holes("RL leg"))
+    add_part("side panel RR", leg_size, leg_h, drill_points=leg_holes("RR leg"))
 
     rail_count = 7 if clear_span_x >= 1800 else 5
     rear_rail_holes = lambda rail_w, label: line_drills(f"{label} rail top fixing", rail_w, 21, rail_count, edge=55, diameter=5, depth_value=12)
@@ -1101,13 +1101,13 @@ def calculate_desk_parts_legacy(params: DesignParams) -> List[Dict[str, Any]]:
     if is_oversize:
         rear_left = int(math.ceil(clear_span_x / 2))
         rear_right = clear_span_x - rear_left
-        add_part("Rear Upper Rail Left", rear_left, 42, drill_points=rear_rail_holes(rear_left, "rear left"))
-        add_part("Rear Upper Rail Right", rear_right, 42, drill_points=rear_rail_holes(rear_right, "rear right"))
-        add_part("Rear Lower Stretcher Left", rear_left, 30, drill_points=lower_rail_holes(rear_left, "rear lower left"))
-        add_part("Rear Lower Stretcher Right", rear_right, 30, drill_points=lower_rail_holes(rear_right, "rear lower right"))
+        add_part("Rear Stretcher Left", rear_left, 42, drill_points=rear_rail_holes(rear_left, "rear left"))
+        add_part("Rear Stretcher Right", rear_right, 42, drill_points=rear_rail_holes(rear_right, "rear right"))
+        add_part("Rear Stretcher Left", rear_left, 30, drill_points=lower_rail_holes(rear_left, "rear lower left"))
+        add_part("Rear Stretcher Right", rear_right, 30, drill_points=lower_rail_holes(rear_right, "rear lower right"))
     else:
-        add_part("Rear Upper Rail", clear_span_x, 42, drill_points=rear_rail_holes(clear_span_x, "rear"))
-        add_part("Rear Lower Stretcher", clear_span_x, 30, drill_points=lower_rail_holes(clear_span_x, "rear lower"))
+        add_part("Rear Stretcher", clear_span_x, 42, drill_points=rear_rail_holes(clear_span_x, "rear"))
+        add_part("Rear Stretcher", clear_span_x, 30, drill_points=lower_rail_holes(clear_span_x, "rear lower"))
 
     add_part("Left Side Rail", clear_span_y, 30, drill_points=lower_rail_holes(clear_span_y, "left side"))
     add_part("Right Side Rail", clear_span_y, 30, drill_points=lower_rail_holes(clear_span_y, "right side"))
@@ -3163,8 +3163,8 @@ def generate_review_drawing_pdf_bytes(params: DesignParams, design_name: str = "
         draw_part_rect(x0 + leg_inset_x * scale, y0, leg_w, leg_h, "Leg", "#E7F0FF", "#005BFF")
         draw_part_rect(x0 + (width - leg_inset_x - leg_size) * scale, y0, leg_w, leg_h, "Leg", "#E7F0FF", "#005BFF")
         # rails/modesty
-        draw_part_rect(x0 + (leg_inset_x + leg_size) * scale, y0 + (height - thickness - 65) * scale, clear_span_x * scale, 42 * scale, "Rear upper rail", "#F4F4F4")
-        draw_part_rect(x0 + (leg_inset_x + leg_size) * scale, y0 + 110 * scale, clear_span_x * scale, 30 * scale, "Rear lower stretcher", "#F4F4F4")
+        draw_part_rect(x0 + (leg_inset_x + leg_size) * scale, y0 + (height - thickness - 65) * scale, clear_span_x * scale, 42 * scale, "Rear Stretcher", "#F4F4F4")
+        draw_part_rect(x0 + (leg_inset_x + leg_size) * scale, y0 + 110 * scale, clear_span_x * scale, 30 * scale, "Rear Stretcher", "#F4F4F4")
 
         dim_line(x0, y0 - 10 * mm, x0 + w, y0 - 10 * mm, f"{int(width)}mm", offset=3 * mm)
         dim_line(x0 - 10 * mm, y0, x0 - 10 * mm, y0 + h, f"{int(height)}mm high", offset=3 * mm)
@@ -3286,14 +3286,14 @@ def generate_review_drawing_pdf_bytes(params: DesignParams, design_name: str = "
                 stroke="#005BFF",
             )
 
-        # Rear upper rail and rear/lower stretcher zones.
+        # Rear Stretcher and rear/lower stretcher zones.
         rail_x = leg_inset_x + leg_size
         rear_y = depth - leg_inset_y - leg_size
         rear_lower_y = max(leg_inset_y, depth - leg_inset_y - leg_size - 36)
         draw_iso_box(
             rail_x, rear_y, max(0, desktop_z - 65),
             clear_span_x, 30, 42,
-            "Rear upper rail",
+            "Rear Stretcher",
             fill_top="#F7F7F7",
             fill_left="#E8E8E8",
             fill_right="#DADADA",
@@ -3302,7 +3302,7 @@ def generate_review_drawing_pdf_bytes(params: DesignParams, design_name: str = "
         draw_iso_box(
             rail_x, rear_lower_y, 110,
             clear_span_x, 30, 30,
-            "Rear lower stretcher",
+            "Rear Stretcher",
             fill_top="#F7F7F7",
             fill_left="#E8E8E8",
             fill_right="#DADADA",
@@ -3511,8 +3511,8 @@ def generate_review_drawing_pdf_bytes(params: DesignParams, design_name: str = "
         steps = [
             "1. Identify all parts from the parts schedule and keep each sheet group together.",
             "2. Lightly sand/clean CNC tabs and edges. Do not enlarge holes until hardware is confirmed.",
-            "3. Build the left and right leg frames first using leg posts, side rails, rear upper rail, and rear lower stretcher.",
-            "4. Dry-fit the rear upper rail, rear lower stretcher, and side rails. Clamp square before permanent fixing.",
+            "3. Build the left and right leg frames first using side panels, side rails, Rear Stretcher, and Rear Stretcher.",
+            "4. Dry-fit the Rear Stretcher, Rear Stretcher, and side rails. Clamp square before permanent fixing.",
             "5. Fit the desktop to the frame. Align rear edge, leg inset, cable openings, and rail fixing lines.",
             "6. Fit the back modesty panel after the main frame is square.",
             "7. Assemble and install the cable tray if selected.",
@@ -3598,7 +3598,7 @@ def generate_review_drawing_pdf_bytes(params: DesignParams, design_name: str = "
             return fallback
 
         desktop_count, desktop_parts = count_drills_for_terms(("desktop", "top"), ("vesa", "mixer", "tray", "hook"))
-        rail_leg_count, rail_leg_parts = count_drills_for_terms(("rail", "leg post", "leg", "side rail", "rear upper", "rear lower", "stretcher"), ("cable tray", "mixer", "vesa", "hook"))
+        rail_leg_count, rail_leg_parts = count_drills_for_terms(("rail", "side panel", "leg", "side rail", "rear upper", "rear lower", "stretcher"), ("cable tray", "mixer", "vesa", "hook"))
         modesty_count, modesty_parts = count_drills_for_terms(("modesty", "back panel", "back modesty", "rear panel"), ())
         cable_count, cable_parts = count_drills_for_terms(("cable tray", "cable"), ())
         mixer_count, mixer_parts = count_drills_for_terms(("mixer",), ())
@@ -3615,7 +3615,7 @@ def generate_review_drawing_pdf_bytes(params: DesignParams, design_name: str = "
                 "Calculated" if desktop_count else "Manual check",
             ),
             (
-                "Rail to leg post joints",
+                "Rail to side panel joints",
                 "Screws/dowels/cam/confirm hardware",
                 qty_text(rail_leg_count, rail_leg_parts),
                 "Clamp square; confirm edge distance",
@@ -3736,7 +3736,7 @@ def generate_review_drawing_pdf_bytes(params: DesignParams, design_name: str = "
                 back_edge = "Inside frame face"
                 left_edge = "Left end from user position"
                 right_edge = "Right end from user position"
-                note = "Rear lower stretcher must stay on service/back side"
+                note = "Rear Stretcher must stay on service/back side"
 
             elif "left" in name:
                 front_edge = "Front end"
@@ -3752,33 +3752,33 @@ def generate_review_drawing_pdf_bytes(params: DesignParams, design_name: str = "
                 right_edge = "Outside right face"
                 note = "Handed right-side part"
 
-            elif "leg post fl" in name:
+            elif "side panel fl" in name:
                 front_edge = "Front face"
                 back_edge = "Inside/rear face"
                 left_edge = "Left/outside face"
                 right_edge = "Inside/right face"
-                note = "Front-left leg post"
+                note = "Front-left side panel"
 
-            elif "leg post fr" in name:
+            elif "side panel fr" in name:
                 front_edge = "Front face"
                 back_edge = "Inside/rear face"
                 left_edge = "Inside/left face"
                 right_edge = "Right/outside face"
-                note = "Front-right leg post"
+                note = "Front-right side panel"
 
-            elif "leg post rl" in name:
+            elif "side panel rl" in name:
                 front_edge = "Inside/front face"
                 back_edge = "Rear face"
                 left_edge = "Left/outside face"
                 right_edge = "Inside/right face"
-                note = "Rear-left leg post"
+                note = "Rear-left side panel"
 
-            elif "leg post rr" in name:
+            elif "side panel rr" in name:
                 front_edge = "Inside/front face"
                 back_edge = "Rear face"
                 left_edge = "Inside/left face"
                 right_edge = "Right/outside face"
-                note = "Rear-right leg post"
+                note = "Rear-right side panel"
 
             elif "cable tray" in name:
                 front_edge = "Tray front/user side"
@@ -3976,10 +3976,10 @@ def generate_review_drawing_pdf_bytes(params: DesignParams, design_name: str = "
         part_box(cx - desk_w / 2, desktop_y, desk_w, top_h, "STEP 3 - DESKTOP TOP", "#FFFFFF", "#111111")
         label("Lift/position desktop after frame is square", cx, desktop_y + top_h + 5 * mm, size=7)
 
-        part_box(cx - desk_w * 0.42, rail_y + 16 * mm, desk_w * 0.84, rail_h, "STEP 2 - REAR UPPER RAIL", "#F4F4F4", "#555555")
-        part_box(cx - desk_w * 0.42, rail_y - 4 * mm, desk_w * 0.84, rail_h, "STEP 2 - REAR LOWER STRETCHER", "#F4F4F4", "#555555")
-        part_box(cx - desk_w * 0.52, rail_y + 2 * mm, 18 * mm, rail_h * 2.2, "SIDE RAIL L", "#F4F4F4", "#555555")
-        part_box(cx + desk_w * 0.52 - 18 * mm, rail_y + 2 * mm, 18 * mm, rail_h * 2.2, "SIDE RAIL R", "#F4F4F4", "#555555")
+        part_box(cx - desk_w * 0.42, rail_y + 16 * mm, desk_w * 0.84, rail_h, "STEP 2 - Rear Stretcher", "#F4F4F4", "#555555")
+        part_box(cx - desk_w * 0.42, rail_y - 4 * mm, desk_w * 0.84, rail_h, "STEP 2 - Rear Stretcher", "#F4F4F4", "#555555")
+        part_box(cx - desk_w * 0.52, rail_y + 2 * mm, 18 * mm, rail_h * 2.2, "Side Panel", "#F4F4F4", "#555555")
+        part_box(cx + desk_w * 0.52 - 18 * mm, rail_y + 2 * mm, 18 * mm, rail_h * 2.2, "Side Panel", "#F4F4F4", "#555555")
         label("Clamp frame square before desktop fixing", cx, rail_y + 36 * mm, size=7)
 
         leg_positions = [
@@ -4087,13 +4087,13 @@ def generate_review_drawing_pdf_bytes(params: DesignParams, design_name: str = "
                 "Confirm screw length against material thickness.",
                 "Check cable/mixer openings before final fixing.",
             ]),
-            ("Rail end to leg post", "Rail ends fix into leg posts; clamp square before tightening.", [
+            ("Rail end to side panel", "Rail ends fix into side panels; clamp square before tightening.", [
                 "Dry fit left/right frame first.",
-                "Keep rail flush and square to leg post.",
+                "Keep rail flush and square to side panel.",
                 "Confirm edge distance before final fixing.",
                 "Do not over-tighten into board edge.",
             ]),
-            ("Side rail to leg frame", "Side rail locks front/rear leg frames together.", [
+            ("Side rail to leg frame", "Side Panelocks front/rear leg frames together.", [
                 "Confirm handed side before assembly.",
                 "Fit rails before desktop.",
                 "Check frame is not racked.",
@@ -5166,6 +5166,9 @@ async def startup():
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
+
+
+
 
 
 
