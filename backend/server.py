@@ -1038,7 +1038,7 @@ def calculate_parts_v1(params: DesignParams) -> List[Dict[str, Any]]:
 
     return calculate_parts_v1(params)
 
-def calculate_desk_parts(params: DesignParams) -> List[Dict[str, Any]]:
+def calculate_parts_v1(params: DesignParams) -> List[Dict[str, Any]]:
     """Generate export parts with CNC feature metadata: drill points, pockets, and cutouts."""
     parts: List[Dict[str, Any]] = []
 
@@ -4585,7 +4585,7 @@ async def purchase_single_export(request: Request):
         raise HTTPException(status_code=503, detail="Stripe SDK unavailable")
 
     # Compute authoritative quote on the server
-    parts = calculate_desk_parts(design_params)
+    parts = calculate_parts_v1(design_params)
     nesting = simple_nesting(parts, 2400, 1200)
     total_part_qty = sum(p.get("quantity", 1) for p in parts)
     quote = calculate_quote(
@@ -4752,7 +4752,7 @@ async def generate_export_files(export_req: ExportRequest, request: Request):
     else:
         config = CNCConfig()
 
-    parts = calculate_desk_parts(export_req.params)
+    parts = calculate_parts_v1(export_req.params)
     nesting = simple_nesting(parts, config.sheet_width, config.sheet_height)
 
     bundle_cfg = BUNDLE_OPTIONS[requested_bundle]
@@ -5082,7 +5082,7 @@ async def list_bundles():
 @pricing_router.post("/quote", response_model=QuoteBreakdown)
 async def pricing_quote(body: QuoteRequestBody):
     """Live quote - no auth required. Computes sheets + parts from params then prices."""
-    parts = calculate_desk_parts(body.params)
+    parts = calculate_parts_v1(body.params)
     nesting = simple_nesting(parts, 2400, 1200)
     total_part_qty = sum(p.get("quantity", 1) for p in parts)
     return calculate_quote(
@@ -5111,7 +5111,7 @@ def _build_share_slug() -> str:
 @pricing_router.post("/share")
 async def create_share_link(body: ShareQuoteRequest, request: Request):
     """Save a quote snapshot and return a shareable slug + public URL."""
-    parts = calculate_desk_parts(body.params)
+    parts = calculate_parts_v1(body.params)
     nesting = simple_nesting(parts, 2400, 1200)
     total_part_qty = sum(p.get("quantity", 1) for p in parts)
     quote = calculate_quote(
@@ -5313,6 +5313,7 @@ async def startup():
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
+
 
 
 
