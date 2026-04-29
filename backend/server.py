@@ -3476,13 +3476,12 @@ def generate_review_drawing_pdf_bytes(params: DesignParams, design_name: str = "
 
         section_title("Part-to-part connection map")
         connection_rows = [
-            ("Desktop Top", "Rear Upper Rail", "Underside rear fixing line", "pilot holes / screws", "Check cable cutout clearance first"),
-            ("Desktop Top", "Rear Lower Stretcher", "Underside rear/service-side fixing line", "pilot holes / screws", "Keep rail square before fixing on service side"),
-            ("Rear Upper Rail", "Leg Post FL / FR / RL / RR", "Rail ends into leg posts", "screws / dowels / confirm hardware", "Pre-drill and clamp square"),
-            ("Rear Lower Stretcher", "Leg Post RL / RR", "Rear lower stretcher to rear/service-side legs", "screws / dowels / confirm hardware", "Keep user/knee side clear"),
-            ("Side Rails", "Front and rear leg posts", "Left/right frame sides", "screws / dowels / confirm hardware", "Confirm handed parts"),
-            ("Back Modesty Panel", "Rear rail / rear leg zone", "Rear face", "screws / pilot holes", "Fit after main frame is square"),
-        ]
+    ("Desktop Top", "Side Panels", "Top interface", "Slot fit", "Primary load transfer"),
+    ("Side Panels", "Rear Stretcher", "Rear/service side", "Slot fit", "Prevents racking"),
+    ("Side Panels", "Front Locking Rail", "Front/user side", "Slot fit", "Locks frame parallel"),
+    ("Rear Shear Panel", "Side Panels", "Rear face", "Slot/screw", "Adds rigidity for wider desks"),
+    ("Centre Support Panel", "Desktop", "Centre underside", "Slot fit", "Reduces span and sag")
+]
 
         if params.has_cable_management:
             connection_rows.extend([
@@ -5167,6 +5166,8 @@ async def startup():
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
+
+
 
 
 
