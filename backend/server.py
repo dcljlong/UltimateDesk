@@ -862,6 +862,19 @@ def add_shear_panel(parts: List[Dict[str, Any]], params: DesignParams):
         })
     return parts
 
+
+# === BUILD SYSTEM V1: SHEAR PANEL (SAFE) ===
+def add_shear_panel_once(parts: List[Dict[str, Any]], params: DesignParams):
+    if params.width >= 1600 and not any(p.get("name") == "Rear Shear Panel" for p in parts):
+        parts.append({
+            "name": "Rear Shear Panel",
+            "width": params.width - (params.material_thickness * 2),
+            "height": 400,
+            "category": "structure",
+            "role": "anti_racking"
+        })
+    return parts
+
 # === BUILD SYSTEM V1: PART DESCRIPTIONS ===
 def annotate_parts(parts: List[Dict[str, Any]]):
     for p in parts:
@@ -5281,6 +5294,7 @@ async def startup():
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
+
 
 
 
