@@ -102,3 +102,4 @@ frontend/node_modules_backup_*/
 Thumbs.db
 .vercel
 .env*.local
+frontend/node_modules/.cache/default-development/3.pack

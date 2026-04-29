@@ -1,4 +1,4 @@
-from dotenv import load_dotenv
+﻿from dotenv import load_dotenv
 load_dotenv()
 
 from fastapi import FastAPI, APIRouter, HTTPException, Request, Depends, Response
@@ -91,6 +91,13 @@ class UserResponse(BaseModel):
     created_at: datetime
 
 class DesignParams(BaseModel):
+    # === BUILD SYSTEM V1 ===
+    build_system: str = "modular_slot"  # modular_slot | metal_legs | cnc_frame
+
+    structural_warnings: List[str] = []
+    buildability_warnings: List[str] = []
+    confidence_level: float = 0.0
+
     width: int = 1800
     depth: int = 800
     height: int = 750
@@ -801,6 +808,66 @@ Rules:
 # ============== CNC GENERATOR ROUTES ==============
 
 
+
+
+# === BUILD SYSTEM V1: MODULAR SLOT ===
+def calculate_modular_slot_parts(params: DesignParams) -> List[Dict[str, Any]]:
+    parts: List[Dict[str, Any]] = []
+
+    width = params.width
+    depth = params.depth
+    height = params.height
+    t = params.material_thickness
+
+    leg_height = height - t
+
+    parts.append({
+        "name": "Side Panel Left",
+        "width": depth,
+        "height": leg_height,
+        "category": "structure",
+        "role": "vertical_support"
+    })
+
+    parts.append({
+        "name": "Side Panel Right",
+        "width": depth,
+        "height": leg_height,
+        "category": "structure",
+        "role": "vertical_support"
+    })
+
+    parts.append({
+        "name": "Desktop Top",
+        "width": width,
+        "height": depth,
+        "category": "primary_surface",
+        "role": "load_surface"
+    })
+
+    parts.append({
+        "name": "Rear Stretcher",
+        "width": width - (t * 2),
+        "height": 120,
+        "category": "structure",
+        "role": "anti_racking"
+    })
+
+    return parts
+
+# === BUILD SYSTEM V1 ROUTER ===
+def calculate_parts_v1(params: DesignParams) -> List[Dict[str, Any]]:
+    if getattr(params, 'build_system', 'cnc_frame') == "modular_slot":
+        return calculate_modular_slot_parts(params)
+
+    elif params.build_system == "metal_legs":
+        return calculate_metal_leg_parts(params)
+
+    elif params.build_system == "cnc_frame":
+        return calculate_parts_v1(params)
+
+    return calculate_parts_v1(params)
+
 def calculate_desk_parts(params: DesignParams) -> List[Dict[str, Any]]:
     """Generate export parts with CNC feature metadata: drill points, pockets, and cutouts."""
     parts: List[Dict[str, Any]] = []
@@ -1355,7 +1422,7 @@ def generate_gcode_preview(parts: List[Dict], config: CNCConfig) -> str:
 async def generate_cnc(params: DesignParams):
     config = CNCConfig()
 
-    parts = calculate_desk_parts(params)
+    parts = calculate_parts_v1(params)
     nesting = simple_nesting(parts, config.sheet_width, config.sheet_height)
 
     # Calculate cut time (rough estimate)
@@ -1380,7 +1447,7 @@ async def generate_cnc(params: DesignParams):
 async def material_estimate(width: int = 1800, depth: int = 800, height: int = 750):
     """Quick material cost estimate"""
     params = DesignParams(width=width, depth=depth, height=height)
-    parts = calculate_desk_parts(params)
+    parts = calculate_parts_v1(params)
     nesting = simple_nesting(parts, 2400, 1200)
 
     return {
@@ -2905,7 +2972,7 @@ def generate_review_drawing_pdf_bytes(params: DesignParams, design_name: str = "
     clear_span_x = max(300, width - ((leg_inset_x + leg_size) * 2))
     clear_span_y = max(220, depth - ((leg_inset_y + leg_size) * 2))
 
-    parts = calculate_desk_parts(params)
+    parts = calculate_parts_v1(params)
     nesting = simple_nesting(parts, 2400, 1200)
 
     def feature_items(part, keys):
@@ -4119,7 +4186,7 @@ def generate_review_drawing_pdf_bytes(params: DesignParams, design_name: str = "
 
         c.setFont("Helvetica", 7.2)
         for item in checklist:
-            c.drawString(margin + 4 * mm, y, f"☐ {item}")
+            c.drawString(margin + 4 * mm, y, f"â˜ {item}")
             y -= 5.5 * mm
 
     def draw_parts_and_feature_schedule():
@@ -4687,7 +4754,7 @@ async def download_export_file(export_id: str, file_type: str, request: Request)
     elif file_type == "pdf":
         params = DesignParams(**export.get("params", {}))
         config = CNCConfig(**(export.get("cnc_config") or {}))
-        parts = calculate_desk_parts(params)
+        parts = calculate_parts_v1(params)
         nesting = simple_nesting(parts, config.sheet_width, config.sheet_height)
         content = generate_pdf_bytes(nesting.parts, nesting, params, export.get("design_name", "UltimateDesk"))
         filename = f"{design_name}_cutting_sheet.pdf"
@@ -4951,7 +5018,7 @@ def _render_quote_html(doc: Dict[str, Any]) -> str:
   <h1>UltimateDesk</h1>
   <div class="meta">
     <span class="bundle-tag">{q['bundle_label']}</span>
-    &nbsp;·&nbsp; Quote generated {doc['created_at'].strftime('%Y-%m-%d') if hasattr(doc.get('created_at',''), 'strftime') else ''}
+    &nbsp;Â·&nbsp; Quote generated {doc['created_at'].strftime('%Y-%m-%d') if hasattr(doc.get('created_at',''), 'strftime') else ''}
   </div>
   <div class="headline">{design_name}</div>
   <div style="color:#555; font-size:14px;">{q['headline']}</div>
@@ -4973,7 +5040,7 @@ def _render_quote_html(doc: Dict[str, Any]) -> str:
   <button class="print-btn" onclick="window.print()">Save as PDF / Print</button>
 
   <div class="footer">
-    Design: {params.get('desk_type', 'custom')} - {params.get('width', 0)} x {params.get('depth', 0)} x {params.get('height', 0)} mm ·
+    Design: {params.get('desk_type', 'custom')} - {params.get('width', 0)} x {params.get('depth', 0)} x {params.get('height', 0)} mm Â·
     {q['sheets_required']} sheet(s) - {q['part_count']} parts.<br>
     Export files include: {', '.join(q.get('bundle_files', []))}.<br>
     This quote is for pricing guidance and reference file generation only. Verify dimensions, toolpaths, tooling, feeds, origins and hold-down strategy in your CAM software before cutting.
@@ -5067,3 +5134,8 @@ async def startup():
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
+
+
+
+
+
