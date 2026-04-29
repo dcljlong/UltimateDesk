@@ -1,4 +1,4 @@
-﻿from dotenv import load_dotenv
+from dotenv import load_dotenv
 load_dotenv()
 
 from fastapi import FastAPI, APIRouter, HTTPException, Request, Depends, Response
@@ -101,7 +101,8 @@ class DesignParams(BaseModel):
     width: int = 1800
     depth: int = 800
     height: int = 750
-    desk_type: str = "gaming"
+    desk_type: str = "gaming"
+
     build_method: str = "cnc_router"
     monitor_count: int = 1
     has_rgb_channels: bool = False
@@ -555,7 +556,8 @@ AI_NUMERIC_LIMITS = {
 }
 
 AI_ENUM_LIMITS = {
-    "desk_type": {"gaming", "studio", "office", "standard_office", "executive", "executive_office", "creator_studio", "minimal_commercial", "heavy_duty_oversize"},
+    "desk_type": {"gaming", "studio", "office", "standard_office", "executive", "executive_office", "creator_studio", "minimal_commercial", "heavy_duty_oversize"},
+
     "build_method": {"diy_power_tools", "cnc_router", "workshop_pro"},
     "leg_style": {"standard", "angular", "solid", "trestle"},
     "modesty_panel_style": {"none", "standard", "privacy", "executive"},
@@ -828,8 +830,24 @@ def validate_design_v1(params: DesignParams, parts: List[Dict[str, Any]]):
 
 
 # === BUILD SYSTEM V1: MODULAR SLOT ENGINE ===
-def make_part(name: str, width: int, height: int, category: str, role: str, description: str, fixing: str):
+def make_part(
+    name: str,
+    width: int,
+    height: int,
+    category: str,
+    role: str,
+    description: str,
+    fixing: str,
+    part_id: str = "",
+    placement: str = "",
+    orientation: str = "",
+    joins_to: List[str] = None,
+    assembly_step: int = 0,
+    critical_check: str = "",
+    install_note: str = "",
+):
     return {
+        "id": part_id,
         "name": name,
         "width": int(width),
         "height": int(height),
@@ -837,42 +855,255 @@ def make_part(name: str, width: int, height: int, category: str, role: str, desc
         "role": role,
         "description": description,
         "fixing": fixing,
+        "placement": placement,
+        "orientation": orientation,
+        "joins_to": joins_to or [],
+        "assembly_step": assembly_step,
+        "critical_check": critical_check,
+        "install_note": install_note,
     }
 
 
 def add_slot_joinery(parts: List[Dict[str, Any]], params: DesignParams):
-    t = params.material_thickness
+    t = int(params.material_thickness)
 
     for p in parts:
-        if p.get("role") == "vertical_support":
-            p["slots"] = [{"type": "through_slot", "width": t, "depth": t, "position": "top_edge"}]
+        name = str(p.get("name", ""))
+        p.setdefault("slots", [])
+        p.setdefault("joinery", [])
+        p.setdefault("fixing_points", [])
 
-        if p.get("role") in ("anti_racking", "stiffening"):
-            p["slots"] = [{"type": "through_slot", "width": t, "depth": t, "position": "side_edges"}]
+        if name in ("Side Panel Left", "Side Panel Right"):
+            side_name = "left" if "Left" in name else "right"
+            p["slots"] = [
+                {
+                    "id": f"{side_name}_rear_shear_slot",
+                    "type": "vertical_tab_slot",
+                    "accepts": "Rear Shear Panel",
+                    "position": "rear vertical edge",
+                    "width": t,
+                    "depth": t,
+                    "purpose": "Locks rear shear panel into side panel to resist racking.",
+                },
+                {
+                    "id": f"{side_name}_rear_stretcher_slot",
+                    "type": "horizontal_tab_slot",
+                    "accepts": "Rear Stretcher",
+                    "position": "inside rear face, below desktop",
+                    "width": t,
+                    "depth": t,
+                    "purpose": "Locates rear stretcher between side panels.",
+                },
+                {
+                    "id": f"{side_name}_front_locking_rail_slot",
+                    "type": "horizontal_tab_slot",
+                    "accepts": "Front Locking Rail",
+                    "position": "front/user face, below desktop",
+                    "width": t,
+                    "depth": t,
+                    "purpose": "Locates front locking rail and keeps side panels parallel.",
+                },
+            ]
+            p["fixing_points"] = [
+                "Clamp side panels square before permanent fixing.",
+                "Confirm front/back orientation before fitting rails.",
+                "Do not rely on desktop alone to stop racking.",
+            ]
+
+        elif name == "Desktop Top":
+            p["joinery"] = [
+                {
+                    "id": "desktop_side_panel_bearing",
+                    "type": "bearing_surface",
+                    "mates_with": ["Side Panel Left", "Side Panel Right", "Centre Support Panel"],
+                    "position": "underside support lines",
+                    "purpose": "Desktop bears on vertical panels and is fixed only after base is square.",
+                }
+            ]
+            p["fixing_points"] = [
+                "Align equal overhang before fixing.",
+                "Use underside screw / pilot fixing only after base is square.",
+                "Avoid screw breakthrough through desktop.",
+            ]
+
+        elif name == "Rear Shear Panel":
+            p["joinery"] = [
+                {
+                    "id": "rear_shear_panel_tabs",
+                    "type": "side_tabs_or_screw_line",
+                    "mates_with": ["Side Panel Left", "Side Panel Right"],
+                    "position": "back/service face",
+                    "purpose": "Primary anti-racking panel; stops sideways folding.",
+                }
+            ]
+            p["fixing_points"] = [
+                "Fit before desktop where possible.",
+                "Clamp desk square before final fixing.",
+                "Rear shear panel is structural; cable tray is not.",
+            ]
+
+        elif name == "Rear Stretcher":
+            p["joinery"] = [
+                {
+                    "id": "rear_stretcher_end_tabs",
+                    "type": "end_tabs",
+                    "mates_with": ["Side Panel Left", "Side Panel Right"],
+                    "position": "inside rear, below desktop",
+                    "purpose": "Keeps rear span aligned and supports rear edge zone.",
+                }
+            ]
+
+        elif name == "Front Locking Rail":
+            p["joinery"] = [
+                {
+                    "id": "front_locking_rail_end_tabs",
+                    "type": "end_tabs",
+                    "mates_with": ["Side Panel Left", "Side Panel Right"],
+                    "position": "front/user side, below desktop",
+                    "purpose": "Locks side panels parallel while keeping user side open.",
+                }
+            ]
+
+        elif name == "Centre Support Panel":
+            p["slots"] = [
+                {
+                    "id": "centre_support_desktop_bearing",
+                    "type": "centre_bearing_support",
+                    "accepts": "Desktop Top",
+                    "position": "centre underside",
+                    "width": t,
+                    "depth": t,
+                    "purpose": "Reduces desktop span and sag on wide desks.",
+                }
+            ]
 
     return parts
 
 
 def calculate_modular_slot_parts(params: DesignParams) -> List[Dict[str, Any]]:
-    width = params.width
-    depth = params.depth
-    height = params.height
-    t = params.material_thickness
+    width = int(params.width)
+    depth = int(params.depth)
+    height = int(params.height)
+    t = int(params.material_thickness)
     panel_h = height - t
+    clear_width = width - (t * 2)
 
     parts: List[Dict[str, Any]] = [
-        make_part("Side Panel Left", depth, panel_h, "structure", "vertical_support", "Left side panel supports the desktop and accepts rear/front locking parts.", "Slots into desktop underside and rear/front locking parts."),
-        make_part("Side Panel Right", depth, panel_h, "structure", "vertical_support", "Right side panel supports the desktop and accepts rear/front locking parts.", "Slots into desktop underside and rear/front locking parts."),
-        make_part("Desktop Top", width, depth, "primary_surface", "load_surface", "Main desktop surface transferring load into side panels.", "Locks down over the side panels and support parts."),
-        make_part("Rear Stretcher", width - (t * 2), 120, "structure", "anti_racking", "Rear stretcher stops side-to-side racking and keeps the desk square.", "Slots into both side panels at the rear/service side."),
-        make_part("Front Locking Rail", width - (t * 2), 80, "structure", "stiffening", "Front rail stiffens the open side and helps lock the side panels parallel.", "Slots into both side panels at the front/user side."),
+        make_part(
+            "Desktop Top",
+            width,
+            depth,
+            "primary_surface",
+            "load_surface",
+            "Main horizontal work surface. It sits over the side panels and is fixed after the base is square.",
+            "Fix down to side panels, rear stretcher/shear panel, and centre support where present.",
+            part_id="P01",
+            placement="top horizontal panel",
+            orientation="FRONT edge faces user; BACK edge faces cable/accessory side",
+            joins_to=["Side Panel Left", "Side Panel Right", "Rear Stretcher", "Rear Shear Panel", "Centre Support Panel"],
+            assembly_step=5,
+            critical_check="Confirm equal overhang and cable cutout orientation before fixing.",
+            install_note="Do not install desktop until side panels, front rail, rear stretcher, and rear shear panel are square.",
+        ),
+        make_part(
+            "Side Panel Left",
+            depth,
+            panel_h,
+            "structure",
+            "vertical_support",
+            "Left full-depth vertical support panel. This is the left load-bearing side from the seated/user position.",
+            "Receives rear shear panel, rear stretcher, and front locking rail in slots or fixing lines.",
+            part_id="P02",
+            placement="left vertical side",
+            orientation="FRONT edge faces user side; BACK edge faces cable/accessory side; outside face points left",
+            joins_to=["Desktop Top", "Rear Stretcher", "Front Locking Rail", "Rear Shear Panel"],
+            assembly_step=1,
+            critical_check="Confirm handed orientation before slotting rails.",
+            install_note="Stand upright first with right side panel.",
+        ),
+        make_part(
+            "Side Panel Right",
+            depth,
+            panel_h,
+            "structure",
+            "vertical_support",
+            "Right full-depth vertical support panel. This is the right load-bearing side from the seated/user position.",
+            "Receives rear shear panel, rear stretcher, and front locking rail in slots or fixing lines.",
+            part_id="P03",
+            placement="right vertical side",
+            orientation="FRONT edge faces user side; BACK edge faces cable/accessory side; outside face points right",
+            joins_to=["Desktop Top", "Rear Stretcher", "Front Locking Rail", "Rear Shear Panel"],
+            assembly_step=1,
+            critical_check="Confirm handed orientation before slotting rails.",
+            install_note="Stand upright first with left side panel.",
+        ),
+        make_part(
+            "Rear Shear Panel",
+            clear_width,
+            400,
+            "structure",
+            "anti_racking",
+            "Main rear anti-racking panel. This stops the desk folding sideways and defines the back/service face.",
+            "Tabs or screws into both side panels on the rear/service side.",
+            part_id="P04",
+            placement="rear/back face between side panels",
+            orientation="Long edge horizontal; visible face toward rear/service side",
+            joins_to=["Side Panel Left", "Side Panel Right", "Desktop Top"],
+            assembly_step=3,
+            critical_check="Clamp side panels square before final fixing.",
+            install_note="This is structural. Do not confuse it with the cable tray.",
+        ),
+        make_part(
+            "Rear Stretcher",
+            clear_width,
+            120,
+            "structure",
+            "rear_alignment",
+            "Upper rear alignment rail below the desktop. It helps keep the back span straight and supports the rear fixing zone.",
+            "Slots into both side panels at the rear/service side.",
+            part_id="P05",
+            placement="inside rear, below desktop",
+            orientation="Long edge horizontal across width",
+            joins_to=["Side Panel Left", "Side Panel Right", "Desktop Top"],
+            assembly_step=2,
+            critical_check="Keep flush and square between side panels.",
+            install_note="Fit with the front locking rail before final squaring.",
+        ),
+        make_part(
+            "Front Locking Rail",
+            clear_width,
+            80,
+            "structure",
+            "front_locking",
+            "Front/user-side locking rail. It keeps side panels parallel while leaving the seated side open.",
+            "Slots into both side panels at the front/user side.",
+            part_id="P06",
+            placement="front/user side between side panels",
+            orientation="Long edge horizontal across width",
+            joins_to=["Side Panel Left", "Side Panel Right"],
+            assembly_step=2,
+            critical_check="Confirm this is fitted to the user/front side, not the rear.",
+            install_note="Fit before desktop.",
+        ),
     ]
 
-    if width >= 1600:
-        parts.append(make_part("Rear Shear Panel", width - (t * 2), 400, "structure", "anti_racking", "Rear shear panel gives stronger anti-racking support for wider desks.", "Slots or screws into both side panels on the rear/service side."))
-
     if width > 1800:
-        parts.append(make_part("Centre Support Panel", depth, panel_h, "structure", "vertical_support", "Centre support reduces desktop span and sag on wide desks.", "Slots under desktop between side panels."))
+        parts.append(make_part(
+            "Centre Support Panel",
+            depth,
+            panel_h,
+            "structure",
+            "vertical_support",
+            "Centre vertical support panel for wide desks. It reduces desktop span and sag.",
+            "Sits under desktop between side panels and aligns front/back with the side panels.",
+            part_id="P07",
+            placement="centre underside, front-to-back",
+            orientation="Full depth panel, centred between left and right side panels",
+            joins_to=["Desktop Top", "Rear Stretcher", "Rear Shear Panel"],
+            assembly_step=4,
+            critical_check="Required for wide spans; confirm knee clearance and cable path.",
+            install_note="Fit before desktop on wide desks.",
+        ))
 
     parts = add_slot_joinery(parts, params)
     params.structural_warnings = validate_design_v1(params, parts)
