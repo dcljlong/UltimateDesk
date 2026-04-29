@@ -3727,8 +3727,8 @@ def generate_review_drawing_pdf_bytes(params: DesignParams, design_name: str = "
             elif "rear" in name or "back" in name:
                 front_edge = "Face toward user/front"
                 back_edge = "Rear/back face"
-                left_edge = "Left end to left rear leg/frame"
-                right_edge = "Right end to right rear leg/frame"
+                left_edge = "Left end to left side panel/frame"
+                right_edge = "Right end to right side panel/frame"
                 note = "Keep rear-facing parts grouped together"
 
             elif "front" in name:
@@ -3736,7 +3736,7 @@ def generate_review_drawing_pdf_bytes(params: DesignParams, design_name: str = "
                 back_edge = "Inside frame face"
                 left_edge = "Left end from user position"
                 right_edge = "Right end from user position"
-                note = "Rear Stretcher must stay on service/back side"
+                note = "Front locking rail must stay on user/front side.back side"
 
             elif "left" in name:
                 front_edge = "Front end"
@@ -3848,7 +3848,7 @@ def generate_review_drawing_pdf_bytes(params: DesignParams, design_name: str = "
         legend_lines = [
             "Mark every cut part before sanding or assembly: ID, FRONT, BACK, LEFT, RIGHT, and visible face where relevant.",
             "Use seated/user position as the reference direction for LEFT and RIGHT.",
-            "Keep handed parts grouped: FL, FR, RL, RR, Left Side, Right Side.",
+            "Keep handed parts grouped: Left Side Panel, Right Side Panel, Rear Stretcher, Front Locking Rail.",
             "Do not rely on board nesting position as final orientation after parts are removed from the sheet.",
         ]
 
@@ -3990,7 +3990,7 @@ def generate_review_drawing_pdf_bytes(params: DesignParams, design_name: str = "
         ]
         for lx, ly, name in leg_positions:
             part_box(lx, ly, leg_w, leg_h, name, "#DDEBFF", "#005BFF")
-        label("STEP 1 - BUILD LEG/RAIL FRAME", cx, leg_y - 8 * mm, size=8, bold=True)
+        label("STEP 1 - SLOT SIDE PANELS + REAR STRETCHER", cx, leg_y - 8 * mm, size=8, bold=True)
 
         accessory_x = left + 8 * mm
         accessory_y = base_y + 105 * mm
@@ -4019,8 +4019,8 @@ def generate_review_drawing_pdf_bytes(params: DesignParams, design_name: str = "
         c.drawString(footer_x, footer_y + 12 * mm, "Exploded assembly order")
         c.setFont("Helvetica", 7)
         order = [
-            "1. Build leg/rail frame and clamp square.",
-            "2. Fit side/front/rear rails to legs.",
+            "1. Slot side panels, rear stretcher, and front locking rail; clamp square.",
+            "2. Fit rear stretcher and front locking rail into side panels.",
             "3. Fit desktop to frame after alignment check.",
             "4. Install cable tray, mixer tray, VESA/headset/accessories where selected.",
             "5. Final check: square, level, hardware tightness, edge finish, cable clearances.",
@@ -5166,6 +5166,7 @@ async def startup():
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
+
 
 
 
