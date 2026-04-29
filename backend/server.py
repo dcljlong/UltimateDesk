@@ -826,6 +826,30 @@ def validate_design_v1(params: DesignParams, parts: List[Dict[str, Any]]):
 
     return warnings
 
+
+# === BUILD SYSTEM V1: SLOT JOINERY (BASIC) ===
+def add_basic_slot_joinery(parts: List[Dict[str, Any]], params: DesignParams):
+    t = params.material_thickness
+
+    for p in parts:
+        if p.get("role") == "vertical_support":
+            p["slots"] = [{
+                "type": "through_slot",
+                "width": t,
+                "depth": t,
+                "position": "top_edge"
+            }]
+
+        if p.get("role") == "anti_racking":
+            p["slots"] = [{
+                "type": "through_slot",
+                "width": t,
+                "depth": t,
+                "position": "side_edges"
+            }]
+
+    return parts
+
 # === BUILD SYSTEM V1: MODULAR SLOT ===
 def calculate_modular_slot_parts(params: DesignParams) -> List[Dict[str, Any]]:
     parts: List[Dict[str, Any]] = []
@@ -5171,6 +5195,7 @@ async def startup():
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
+
 
 
 
