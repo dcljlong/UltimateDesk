@@ -847,7 +847,7 @@ def add_centre_support(parts: List[Dict[str, Any]], params: DesignParams):
             "category": "structure",
             "role": "vertical_support"
         })
-    print('WARNINGS:', getattr(params, 'structural_warnings', []))
+    
     return parts
 
 
@@ -861,7 +861,7 @@ def add_shear_panel(parts: List[Dict[str, Any]], params: DesignParams):
             "category": "structure",
             "role": "anti_racking"
         })
-    print('WARNINGS:', getattr(params, 'structural_warnings', []))
+    
     return parts
 
 
@@ -875,7 +875,7 @@ def add_shear_panel_once(parts: List[Dict[str, Any]], params: DesignParams):
             "category": "structure",
             "role": "anti_racking"
         })
-    print('WARNINGS:', getattr(params, 'structural_warnings', []))
+    
     return parts
 
 # === BUILD SYSTEM V1: PART DESCRIPTIONS ===
@@ -903,7 +903,7 @@ def annotate_parts(parts: List[Dict[str, Any]]):
             "category": "structure",
             "role": "vertical_support"
         })
-    print('WARNINGS:', getattr(params, 'structural_warnings', []))
+    
     return parts
 
 # === BUILD SYSTEM V1: SLOT JOINERY (BASIC) ===
@@ -935,7 +935,7 @@ def add_basic_slot_joinery(parts: List[Dict[str, Any]], params: DesignParams):
             "category": "structure",
             "role": "vertical_support"
         })
-    print('WARNINGS:', getattr(params, 'structural_warnings', []))
+    
     return parts
 
 # === BUILD SYSTEM V1: MODULAR SLOT ===
@@ -989,7 +989,7 @@ def calculate_modular_slot_parts(params: DesignParams) -> List[Dict[str, Any]]:
             "category": "structure",
             "role": "vertical_support"
         })
-    print('WARNINGS:', getattr(params, 'structural_warnings', []))
+    
     return parts
 
 
@@ -1342,7 +1342,7 @@ def calculate_desk_parts(params: DesignParams) -> List[Dict[str, Any]]:
             "category": "structure",
             "role": "vertical_support"
         })
-    print('WARNINGS:', getattr(params, 'structural_warnings', []))
+    
     return parts
 
 
@@ -5301,6 +5301,7 @@ async def startup():
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
+
 
 
 
