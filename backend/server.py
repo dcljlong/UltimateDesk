@@ -810,6 +810,22 @@ Rules:
 
 
 
+
+# === BUILD SYSTEM V1: VALIDATION ===
+def validate_design_v1(params: DesignParams, parts: List[Dict[str, Any]]):
+    warnings = []
+
+    if params.width > 1800:
+        warnings.append("Span risk: consider centre support")
+
+    if not any(p.get("role") == "anti_racking" for p in parts):
+        warnings.append("Racking risk: no rear bracing")
+
+    if getattr(params, "has_cable_management", False):
+        warnings.append("Cable tray is not structural")
+
+    return warnings
+
 # === BUILD SYSTEM V1: MODULAR SLOT ===
 def calculate_modular_slot_parts(params: DesignParams) -> List[Dict[str, Any]]:
     parts: List[Dict[str, Any]] = []
@@ -854,6 +870,27 @@ def calculate_modular_slot_parts(params: DesignParams) -> List[Dict[str, Any]]:
     })
 
     return parts
+
+
+# === BUILD SYSTEM V1: VALIDATION ===
+def validate_design_v1(params: DesignParams, parts: List[Dict[str, Any]]):
+    warnings = []
+
+    width = params.width
+
+    # Span risk
+    if width > 1800:
+        warnings.append("Span risk: consider centre support or thicker material")
+
+    # Racking risk
+    if not any(p.get("role") == "anti_racking" for p in parts):
+        warnings.append("Racking risk: no rear bracing system")
+
+    # Cable misuse
+    if getattr(params, "has_cable_management", False):
+        warnings.append("Cable tray is not structural")
+
+    return warnings
 
 # === BUILD SYSTEM V1 ROUTER ===
 def calculate_parts_v1(params: DesignParams) -> List[Dict[str, Any]]:
@@ -5134,6 +5171,15 @@ async def startup():
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
+
+
+
+
+
+
+
+
+
 
 
 
