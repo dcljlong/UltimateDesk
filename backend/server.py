@@ -4818,6 +4818,79 @@ def generate_review_drawing_pdf_bytes(params: DesignParams, design_name: str = "
     return buffer.getvalue()
 
 
+
+@api_router.post("/design-guidance/analyze")
+async def analyze_design_guidance(export_req: ExportRequest):
+    """
+    Return structured design guidance, buildability review, and drawing notes.
+
+    This endpoint is intentionally separate from PDF generation so the frontend,
+    quote page, export flow, and future design assistant can use the same product
+    logic before drawings or CNC outputs are generated.
+    """
+    params = export_req.params
+    parts = calculate_parts_v1(params)
+    nesting = simple_nesting(parts, 2400, 1200)
+    guidance = generate_design_guidance_v1(
+        params,
+        parts,
+        getattr(params, "build_system", "modular_slot"),
+    )
+
+    def compact_part(part: Dict[str, Any]) -> Dict[str, Any]:
+        return {
+            "id": part.get("id", ""),
+            "name": part.get("name", ""),
+            "width": part.get("width"),
+            "height": part.get("height"),
+            "quantity": part.get("quantity", part.get("qty", 1)),
+            "category": part.get("category", part.get("type", "")),
+            "role": part.get("role", ""),
+            "placement": part.get("placement", ""),
+            "orientation": part.get("orientation", ""),
+            "description": part.get("description", ""),
+            "fixing": part.get("fixing", ""),
+            "critical_check": part.get("critical_check", ""),
+            "install_note": part.get("install_note", ""),
+            "joins_to": part.get("joins_to", []),
+            "components": part.get("components", []),
+            "cutouts": part.get("cutouts", []),
+            "slots": part.get("slots", []),
+            "joinery": part.get("joinery", []),
+            "fixing_points": part.get("fixing_points", []),
+        }
+
+    design_intelligence = {
+        "headline": "Design Intelligence / Buildability Review",
+        "status": guidance.get("status", "review_required"),
+        "summary": {
+            "build_system": guidance.get("build_system"),
+            "desk_type": guidance.get("desk_type"),
+            "overall_size_mm": guidance.get("overall_size_mm"),
+            "part_count": len(parts),
+            "sheets_required": nesting.sheets_required,
+            "waste_percentage": nesting.waste_percentage,
+        },
+        "build_logic": guidance.get("build_logic", []),
+        "structural_review": guidance.get("structural_review", []),
+        "cable_management_review": guidance.get("cable_management_review", []),
+        "manufacturability_review": guidance.get("manufacturability_review", []),
+        "warnings": guidance.get("warnings", []),
+        "recommendations": guidance.get("recommendations", []),
+        "drawing_notes": guidance.get("drawing_notes", []),
+        "self_audit": guidance.get("self_audit", []),
+        "disclaimer": guidance.get("disclaimer", ""),
+    }
+
+    return {
+        "success": True,
+        "design_name": export_req.design_name or "UltimateDesk Design",
+        "design_intelligence": design_intelligence,
+        "parts": [compact_part(part) for part in parts],
+        "detected_parts": guidance.get("detected_parts", []),
+    }
+
+
 @api_router.post("/review-drawings/pdf")
 async def generate_review_drawings_pdf(export_req: ExportRequest):
     """Generate a dimensioned design review PDF before manufacturing export."""
