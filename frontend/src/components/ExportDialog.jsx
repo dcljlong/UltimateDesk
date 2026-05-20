@@ -99,6 +99,118 @@ const CNC_NUMBER_FIELDS = new Set([
   'pocket_finish_allowance',
 ]);
 
+
+
+const CompactReviewList = ({ title, items = [], empty = 'None.' }) => (
+  <div>
+    <div className="text-[11px] font-black uppercase tracking-wide text-[var(--text-secondary)] mb-1">{title}</div>
+    {items && items.length > 0 ? (
+      <ul className="space-y-1 text-xs text-[var(--text-secondary)]">
+        {items.slice(0, 4).map((item, idx) => (
+          <li key={idx} className="flex gap-2">
+            <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-[var(--primary)] flex-shrink-0" />
+            <span>{item}</span>
+          </li>
+        ))}
+      </ul>
+    ) : (
+      <p className="text-xs text-[var(--text-secondary)]">{empty}</p>
+    )}
+  </div>
+);
+
+const ExportDesignReviewCard = ({ review, isLoading, error }) => {
+  const intelligence = review?.design_intelligence;
+  const parts = Array.isArray(review?.parts) ? review.parts : [];
+  const warnings = intelligence?.warnings || [];
+  const recommendations = intelligence?.recommendations || [];
+  const status = intelligence?.status || 'pending';
+
+  const statusClass = status === 'clear'
+    ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300'
+    : status === 'improvable'
+      ? 'bg-amber-500/15 border-amber-500/30 text-amber-300'
+      : 'bg-red-500/15 border-red-500/30 text-red-300';
+
+  return (
+    <div className="neu-surface p-4 rounded-xl border border-[var(--border)]" data-testid="export-design-review-card">
+      <div className="flex items-start justify-between gap-3 mb-3">
+        <div>
+          <h3 className="font-bold text-sm flex items-center gap-2">
+            {warnings.length > 0 ? (
+              <Warning size={16} className="text-amber-500" />
+            ) : (
+              <CheckCircle size={16} className="text-emerald-500" />
+            )}
+            Design / Buildability Review
+          </h3>
+          <p className="text-xs text-[var(--text-secondary)] mt-1">
+            Export uses the same backend design logic as the Designer review tab.
+          </p>
+        </div>
+        <div className={`px-2.5 py-1 rounded-full border text-[10px] font-black uppercase tracking-wide ${statusClass}`}>
+          {isLoading ? 'updating' : status}
+        </div>
+      </div>
+
+      {error && (
+        <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-2.5 text-xs text-red-300" data-testid="export-design-review-error">
+          {error}
+        </div>
+      )}
+
+      {!intelligence && !error && (
+        <div className="rounded-lg border border-[var(--border)] p-2.5 text-xs text-[var(--text-secondary)]">
+          {isLoading ? 'Checking buildability...' : 'Design review pending.'}
+        </div>
+      )}
+
+      {intelligence && (
+        <div className="space-y-3">
+          <div className="grid grid-cols-3 gap-2 text-xs">
+            <div className="rounded-lg border border-[var(--border)] p-2">
+              <div className="text-[var(--text-secondary)]">Parts</div>
+              <div className="font-black">{intelligence.summary?.part_count ?? parts.length}</div>
+            </div>
+            <div className="rounded-lg border border-[var(--border)] p-2">
+              <div className="text-[var(--text-secondary)]">Sheets</div>
+              <div className="font-black">{intelligence.summary?.sheets_required ?? '-'}</div>
+            </div>
+            <div className="rounded-lg border border-[var(--border)] p-2">
+              <div className="text-[var(--text-secondary)]">Waste</div>
+              <div className="font-black">{intelligence.summary?.waste_percentage ?? '-'}%</div>
+            </div>
+          </div>
+
+          {warnings.length > 0 && (
+            <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3" data-testid="export-design-warning-gate">
+              <div className="font-bold text-xs text-amber-300 mb-1">Resolve before export</div>
+              <CompactReviewList title="Warnings" items={warnings} empty="No warnings." />
+            </div>
+          )}
+
+          {warnings.length === 0 && (
+            <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-300" data-testid="export-design-clear">
+              No critical design warnings. Still verify dimensions, CNC settings, hardware, and CAM preview before manufacture.
+            </div>
+          )}
+
+          {recommendations.length > 0 && (
+            <CompactReviewList title="Recommendations" items={recommendations} />
+          )}
+
+          <CompactReviewList
+            title="Drawing / export notes"
+            items={intelligence.drawing_notes || []}
+            empty="No drawing notes returned."
+          />
+        </div>
+      )}
+    </div>
+  );
+};
+
+
 const ExportDialog = ({ isOpen, onClose, params, designName }) => {
   const { isAuthenticated, isPro } = useAuth();
   const navigate = useNavigate();
@@ -120,6 +232,9 @@ const ExportDialog = ({ isOpen, onClose, params, designName }) => {
   const [shareCopied, setShareCopied] = useState(false);
   const [isGeneratingReviewDrawings, setIsGeneratingReviewDrawings] = useState(false);
   const [cncConfig, setCncConfig] = useState(DEFAULT_CNC_CONFIG);
+  const [designReview, setDesignReview] = useState(null);
+  const [isDesignReviewLoading, setIsDesignReviewLoading] = useState(false);
+  const [designReviewError, setDesignReviewError] = useState(null);
 
   // Load bundle catalog once
   useEffect(() => {
@@ -285,6 +400,8 @@ const ExportDialog = ({ isOpen, onClose, params, designName }) => {
     setError(null);
     setShareLink(null);
     setShareCopied(false);
+    setDesignReview(null);
+    setDesignReviewError(null);
     onClose();
   };
 
@@ -325,6 +442,44 @@ const ExportDialog = ({ isOpen, onClose, params, designName }) => {
     const b = bundles.find((x) => x.key === bundle);
     return b?.files || ['dxf'];
   }, [bundles, bundle]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+
+    const handle = setTimeout(async () => {
+      setIsDesignReviewLoading(true);
+      setDesignReviewError(null);
+
+      try {
+        const { data } = await axios.post(`${API}/design-guidance/analyze`, {
+          params,
+          design_name: designName || 'UltimateDesk Design',
+          bundle,
+        });
+
+        if (!cancelled) {
+          setDesignReview(data);
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setDesignReviewError(e.response?.data?.detail || 'Design buildability review failed.');
+        }
+      } finally {
+        if (!cancelled) {
+          setIsDesignReviewLoading(false);
+        }
+      }
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(handle);
+    };
+  }, [isOpen, params, bundle, designName]);
+
+  const designReviewWarnings = designReview?.design_intelligence?.warnings || [];
+  const hasDesignReviewWarnings = designReviewWarnings.length > 0;
 
   // ---- Unauthenticated state ----
   if (!isAuthenticated) {
@@ -468,6 +623,12 @@ const ExportDialog = ({ isOpen, onClose, params, designName }) => {
                 </p>
               </div>
             </label>
+
+            <ExportDesignReviewCard
+              review={designReview}
+              isLoading={isDesignReviewLoading}
+              error={designReviewError}
+            />
 
             {/* Live quote breakdown */}
             <div className="rounded-lg border-2 border-[var(--primary)]/30 p-4 bg-[var(--primary)]/5" data-testid="live-quote-card">
@@ -673,7 +834,7 @@ const ExportDialog = ({ isOpen, onClose, params, designName }) => {
                 type="button"
                 variant="outline"
                 onClick={handleReviewDrawings}
-                disabled={isGeneratingReviewDrawings || !quote}
+                disabled={isGeneratingReviewDrawings || !quote || hasDesignReviewWarnings}
                 className="w-full mt-3"
                 data-testid="download-review-drawings-btn"
               >
@@ -683,13 +844,19 @@ const ExportDialog = ({ isOpen, onClose, params, designName }) => {
               </Button>
             </div>
 
+            {hasDesignReviewWarnings && (
+              <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-300" data-testid="export-design-warning-action-note">
+                Export is paused until the buildability warnings above are resolved or the design is adjusted.
+              </div>
+            )}
+
             {/* Action area */}
             {isChecking ? (
               <div className="text-center py-4 text-[var(--text-secondary)]">Checking access...</div>
             ) : isPro ? (
               <Button
                 onClick={handleGenerateExport}
-                disabled={isGenerating || !quote}
+                disabled={isGenerating || !quote || hasDesignReviewWarnings}
                 className="w-full btn-primary"
                 data-testid="generate-export-btn"
               >
@@ -700,7 +867,7 @@ const ExportDialog = ({ isOpen, onClose, params, designName }) => {
             ) : canUseExistingCredit ? (
               <Button
                 onClick={handleGenerateExport}
-                disabled={isGenerating || !quote}
+                disabled={isGenerating || !quote || hasDesignReviewWarnings}
                 className="w-full btn-primary"
                 data-testid="use-credit-btn"
               >
@@ -709,7 +876,7 @@ const ExportDialog = ({ isOpen, onClose, params, designName }) => {
             ) : (
               <Button
                 onClick={handleCheckout}
-                disabled={isCheckingOut || !quote}
+                disabled={isCheckingOut || !quote || hasDesignReviewWarnings}
                 className="w-full btn-primary"
                 data-testid="checkout-btn"
               >
