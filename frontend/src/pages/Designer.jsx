@@ -16,7 +16,9 @@ import {
   SignOut,
   Crown,
   CaretLeft,
-  X
+  X,
+  Warning,
+  CheckCircle
 } from '@phosphor-icons/react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -77,6 +79,168 @@ const defaultParams = {
   custom_features: []
 };
 
+
+const ReviewList = ({ title, items = [], empty = 'No items flagged.', tone = 'default' }) => {
+  const toneClass = tone === 'warning'
+    ? 'border-amber-500/30 bg-amber-500/10'
+    : tone === 'good'
+      ? 'border-emerald-500/30 bg-emerald-500/10'
+      : 'border-[var(--border)] bg-[var(--surface)]';
+
+  return (
+    <div className={`rounded-xl border p-4 ${toneClass}`}>
+      <div className="text-sm font-black uppercase tracking-wide mb-2">{title}</div>
+      {items && items.length > 0 ? (
+        <ul className="space-y-2 text-sm text-[var(--text-secondary)]">
+          {items.map((item, idx) => (
+            <li key={idx} className="flex gap-2">
+              <span className="mt-1 h-1.5 w-1.5 rounded-full bg-[var(--primary)] flex-shrink-0" />
+              <span>{item}</span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-sm text-[var(--text-secondary)]">{empty}</p>
+      )}
+    </div>
+  );
+};
+
+const DesignIntelligencePanel = ({ guidance, isLoading, error, onRefresh }) => {
+  const intelligence = guidance?.design_intelligence;
+  const parts = Array.isArray(guidance?.parts) ? guidance.parts : [];
+  const status = intelligence?.status || 'pending';
+
+  const statusClass = status === 'clear'
+    ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300'
+    : status === 'improvable'
+      ? 'bg-amber-500/15 border-amber-500/30 text-amber-300'
+      : 'bg-red-500/15 border-red-500/30 text-red-300';
+
+  return (
+    <div className="h-full overflow-y-auto p-5 space-y-5" data-testid="design-intelligence-panel">
+      <div className="neu-surface rounded-2xl border border-[var(--border)] p-5">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <CheckCircle size={22} className="text-[var(--primary)]" />
+              <h2 className="text-xl font-black tracking-tight">Design Intelligence / Buildability Review</h2>
+            </div>
+            <p className="text-sm text-[var(--text-secondary)] mt-1">
+              Live build logic, structural checks, cable-management checks, part logic, and drawing notes from the backend design engine.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <div className={`px-3 py-1.5 rounded-full border text-xs font-black uppercase tracking-wide ${statusClass}`} data-testid="design-intelligence-status">
+              {isLoading ? 'Updating' : status}
+            </div>
+            <Button variant="outline" size="sm" onClick={onRefresh} disabled={isLoading} data-testid="refresh-design-intelligence-btn">
+              Refresh
+            </Button>
+          </div>
+        </div>
+
+        {error && (
+          <div className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300" data-testid="design-intelligence-error">
+            {error}
+          </div>
+        )}
+
+        {!intelligence && !error && (
+          <div className="mt-4 rounded-xl border border-[var(--border)] p-4 text-sm text-[var(--text-secondary)]">
+            {isLoading ? 'Checking design logic...' : 'Design review pending.'}
+          </div>
+        )}
+
+        {intelligence && (
+          <div className="mt-5 grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+            <div className="rounded-xl border border-[var(--border)] p-3">
+              <div className="text-[var(--text-secondary)] text-xs">Build system</div>
+              <div className="font-black">{intelligence.summary?.build_system || 'unknown'}</div>
+            </div>
+            <div className="rounded-xl border border-[var(--border)] p-3">
+              <div className="text-[var(--text-secondary)] text-xs">Parts</div>
+              <div className="font-black">{intelligence.summary?.part_count ?? parts.length}</div>
+            </div>
+            <div className="rounded-xl border border-[var(--border)] p-3">
+              <div className="text-[var(--text-secondary)] text-xs">Sheets</div>
+              <div className="font-black">{intelligence.summary?.sheets_required ?? '-'}</div>
+            </div>
+            <div className="rounded-xl border border-[var(--border)] p-3">
+              <div className="text-[var(--text-secondary)] text-xs">Waste</div>
+              <div className="font-black">{intelligence.summary?.waste_percentage ?? '-'}%</div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {intelligence && (
+        <>
+          <div className="grid xl:grid-cols-2 gap-4">
+            <ReviewList title="Build logic" items={intelligence.build_logic} />
+            <ReviewList title="Structural review" items={intelligence.structural_review} tone="good" />
+            <ReviewList title="Cable management review" items={intelligence.cable_management_review} />
+            <ReviewList title="Manufacturability review" items={intelligence.manufacturability_review} />
+          </div>
+
+          <div className="grid xl:grid-cols-2 gap-4">
+            <ReviewList
+              title="Warnings"
+              items={intelligence.warnings}
+              empty="No critical warnings for the current design."
+              tone={intelligence.warnings?.length ? 'warning' : 'good'}
+            />
+            <ReviewList
+              title="Recommendations"
+              items={intelligence.recommendations}
+              empty="No improvement recommendations for the current design."
+              tone={intelligence.recommendations?.length ? 'warning' : 'good'}
+            />
+          </div>
+
+          <ReviewList title="Drawing notes / renderer rules" items={intelligence.drawing_notes} />
+
+          <div className="neu-surface rounded-2xl border border-[var(--border)] p-5">
+            <div className="flex items-center gap-2 mb-4">
+              <Warning size={20} className="text-[var(--primary)]" />
+              <h3 className="font-black">Generated part model</h3>
+            </div>
+            <div className="overflow-auto rounded-xl border border-[var(--border)]">
+              <table className="w-full text-sm">
+                <thead className="bg-[var(--surface)] text-[var(--text-secondary)]">
+                  <tr>
+                    <th className="text-left p-3">ID</th>
+                    <th className="text-left p-3">Part</th>
+                    <th className="text-left p-3">Role</th>
+                    <th className="text-left p-3">Size</th>
+                    <th className="text-left p-3">Build note</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {parts.map((part, idx) => (
+                    <tr key={`${part.id}-${idx}`} className="border-t border-[var(--border)]">
+                      <td className="p-3 font-mono font-black">{part.id}</td>
+                      <td className="p-3 font-semibold">{part.name}</td>
+                      <td className="p-3 text-[var(--text-secondary)]">{part.role || part.category}</td>
+                      <td className="p-3 font-mono">{part.width} x {part.height}</td>
+                      <td className="p-3 text-[var(--text-secondary)] max-w-md">{part.critical_check || part.install_note || part.fixing}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {intelligence.disclaimer && (
+              <p className="text-xs text-[var(--text-secondary)] mt-3">{intelligence.disclaimer}</p>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
+
+
 const Designer = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -95,6 +259,9 @@ const Designer = () => {
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [livePrice, setLivePrice] = useState(null);
+  const [designGuidance, setDesignGuidance] = useState(null);
+  const [isGuidanceLoading, setIsGuidanceLoading] = useState(false);
+  const [guidanceError, setGuidanceError] = useState(null);
 
   const loadDesign = async (designId) => {
     try {
@@ -160,6 +327,24 @@ const Designer = () => {
     setParams(newParams);
   }, []);
 
+  const analyzeDesignGuidance = useCallback(async (liveParams = params) => {
+    setIsGuidanceLoading(true);
+    setGuidanceError(null);
+    try {
+      const { data } = await axios.post(`${API}/design-guidance/analyze`, {
+        params: liveParams,
+        design_name: designName || 'My Custom Desk',
+        bundle: 'full_pack',
+      });
+      setDesignGuidance(data);
+    } catch (error) {
+      console.error('Design guidance failed:', error);
+      setGuidanceError(error.response?.data?.detail || 'Design intelligence review failed.');
+    } finally {
+      setIsGuidanceLoading(false);
+    }
+  }, [params, designName]);
+
   const generateCNC = useCallback(async (liveParams = params) => {
     setIsGenerating(true);
     try {
@@ -178,6 +363,13 @@ const Designer = () => {
     }, 250);
     return () => clearTimeout(t);
   }, [params, generateCNC]);
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      analyzeDesignGuidance(params);
+    }, 350);
+    return () => clearTimeout(t);
+  }, [params, analyzeDesignGuidance]);
 
   const saveDesign = async () => {
     if (!isAuthenticated) {
@@ -423,17 +615,20 @@ const Designer = () => {
                 <TabsTrigger value="preview" className="gap-1" data-testid="tab-preview">
                   <Cube size={16} /> 3D Preview
                 </TabsTrigger>
+                <TabsTrigger value="guidance" className="gap-1" data-testid="tab-design-guidance">
+                  <CheckCircle size={16} /> Design Review
+                </TabsTrigger>
                 <TabsTrigger value="nesting" className="gap-1" data-testid="tab-nesting">
                   <TreeStructure size={16} /> Nesting
                 </TabsTrigger>
                 <TabsTrigger value="buildviews" className="gap-1" data-testid="tab-buildviews">
-                <TabsTrigger value="joinery" className="gap-1">
-                  Joinery
-                </TabsTrigger>
                   <Ruler size={16} /> Build Views
                 </TabsTrigger>
                 <TabsTrigger value="assembly" className="gap-1" data-testid="tab-assembly">
                   <TreeStructure size={16} /> Assembly
+                </TabsTrigger>
+                <TabsTrigger value="joinery" className="gap-1" data-testid="tab-joinery">
+                  Joinery
                 </TabsTrigger>
                 <TabsTrigger value="gcode" className="gap-1" data-testid="tab-gcode">
                   <Code size={16} /> Toolpath
@@ -441,7 +636,7 @@ const Designer = () => {
                 <TabsTrigger value="ai" className="gap-1" data-testid="tab-ai">
                   <Robot size={16} /> AI Designer
                 </TabsTrigger>
-</TabsList>
+              </TabsList>
               
               <div
                 className="px-3 py-2 rounded-lg border border-[var(--border)] bg-[var(--surface)] text-xs font-mono"
@@ -457,6 +652,15 @@ const Designer = () => {
             
             <TabsContent value="preview" className="flex-1 m-0">
               <DeskPreview3D params={params} />
+            </TabsContent>
+
+            <TabsContent value="guidance" className="flex-1 min-h-0 m-0 overflow-hidden">
+              <DesignIntelligencePanel
+                guidance={designGuidance}
+                isLoading={isGuidanceLoading}
+                error={guidanceError}
+                onRefresh={() => analyzeDesignGuidance(params)}
+              />
             </TabsContent>
 
             <TabsContent value="joinery" className="flex-1 min-h-0 m-0 overflow-auto">
