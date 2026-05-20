@@ -829,6 +829,172 @@ def validate_design_v1(params: DesignParams, parts: List[Dict[str, Any]]):
     return warnings
 
 
+def generate_design_guidance_v1(
+    params: DesignParams,
+    parts: List[Dict[str, Any]] = None,
+    build_system: str = None,
+) -> Dict[str, Any]:
+    """
+    Generate customer/design guidance for the current desk.
+
+    This is a review aid for product logic, manufacturing clarity, and drawing notes.
+    It is not structural certification, engineering approval, or a guarantee that
+    generated CNC/toolpath output is machine-ready without workshop verification.
+    """
+    parts = parts or []
+    width = int(getattr(params, "width", 0) or 0)
+    depth = int(getattr(params, "depth", 0) or 0)
+    height = int(getattr(params, "height", 0) or 0)
+    material_thickness = int(getattr(params, "material_thickness", 18) or 18)
+    build_system = (build_system or getattr(params, "build_system", "legacy") or "legacy").strip().lower()
+    desk_type = (getattr(params, "desk_type", "standard") or "standard").strip().lower()
+    cable_enabled = bool(getattr(params, "has_cable_management", False))
+    cable_cutout_style = (getattr(params, "cable_cutout_style", "rear_center") or "rear_center").strip().lower()
+    cable_tray_style = (getattr(params, "cable_tray_style", "standard") or "standard").strip().lower()
+
+    def part_name(part: Dict[str, Any]) -> str:
+        return str(part.get("name") or part.get("part_name") or part.get("label") or "").strip()
+
+    names = [part_name(part) for part in parts]
+    lower_names = [name.lower() for name in names]
+
+    def has_part(*tokens: str) -> bool:
+        return any(all(token.lower() in name for token in tokens) for name in lower_names)
+
+    has_side_panels = has_part("side", "panel")
+    has_rear_shear = has_part("rear", "shear") or has_part("rear", "panel") or has_part("modesty")
+    has_front_rail = has_part("front", "rail") or has_part("front", "locking")
+    has_centre_support = has_part("centre") or has_part("center")
+    has_tray_parts = has_part("cable", "tray")
+
+    build_logic: List[str] = []
+    structural_review: List[str] = []
+    cable_management_review: List[str] = []
+    manufacturability_review: List[str] = []
+    customer_guidance: List[str] = []
+    recommendations: List[str] = []
+    warnings: List[str] = []
+    drawing_notes: List[str] = []
+    self_audit: List[str] = []
+
+    if build_system == "modular_slot":
+        build_logic.extend([
+            "This design uses the modular slot build system.",
+            "Side panels act as the primary vertical load-bearing members where fitted.",
+            "Rear shear/back panel elements resist racking and keep the desk square.",
+            "Front and rear under-top rails/stiffeners stabilise the desktop perimeter.",
+        ])
+    else:
+        build_logic.extend([
+            f"This design uses the {build_system} build system.",
+            "Confirm that the selected leg/frame system matches the drawing and manufacturing outputs.",
+        ])
+
+    if has_side_panels:
+        structural_review.append("Side panels are present and can act as primary supports.")
+    elif build_system == "modular_slot":
+        warnings.append("Side panels were not detected in the generated parts; confirm the modular desk still has a valid load path.")
+
+    if has_rear_shear:
+        structural_review.append("Rear shear/back panel logic is present for anti-racking.")
+    elif build_system == "modular_slot":
+        warnings.append("Rear shear/back panel was not detected; desk may rack unless another bracing method is included.")
+        recommendations.append("Add a rear shear/back panel or a clearly detailed alternate anti-racking brace.")
+
+    if has_front_rail:
+        structural_review.append("Front under-top rail/stiffener logic is present to tie the side panels and support the front edge.")
+    elif build_system == "modular_slot":
+        recommendations.append("Add or confirm a front under-top rail to stiffen the front edge and keep the open knee space stable.")
+
+    if width > 1600 and not has_centre_support:
+        recommendations.append("For widths over 1600 mm, include a centre under-top stiffener or confirm top thickness/span is acceptable.")
+    if width > 1800:
+        warnings.append("Span review required: desks over 1800 mm should not rely on an unsupported 18 mm top without a centre stiffener/support strategy.")
+    if depth > 800:
+        recommendations.append("Depth over 800 mm: confirm grommet position, cable reach, and tray access from the user side.")
+
+    if cable_enabled and cable_tray_style != "none":
+        cable_management_review.extend([
+            "Cable management is enabled.",
+            "Cable tray must be treated as an accessory only, not a structural rail or shear element.",
+            "Cable path should be: desktop grommet/pass-through -> tray/channel -> tray-bottom or tray-end exit.",
+        ])
+        if has_tray_parts:
+            cable_management_review.append("Cable tray parts are present in the generated part list.")
+        else:
+            recommendations.append("Cable tray is enabled but tray parts were not detected; confirm accessory schedule and drawing notes.")
+        if cable_cutout_style == "rear_center":
+            cable_management_review.append("Rear-centred cable pass-through/grommet selected.")
+        elif cable_cutout_style == "dual_grommet":
+            cable_management_review.append("Dual cable pass-through/grommet layout selected; keep both openings symmetrical unless custom layout is requested.")
+        elif cable_cutout_style == "long_slot":
+            cable_management_review.append("Long-slot cable access selected; confirm edge distances and finish requirements.")
+        drawing_notes.append("Show cable tray as A-series accessory, not a structural P-series member.")
+        drawing_notes.append("Show cable exit in tray bottom/end only; do not put cable exit holes through structural rails.")
+    else:
+        cable_management_review.append("Cable tray is disabled or set to none.")
+        recommendations.append("For commercial desk layouts, consider adding a rear grommet and accessible cable tray/basket option.")
+
+    manufacturability_review.extend([
+        f"Nominal material thickness is {material_thickness} mm.",
+        "Keep CNC cut parts, bought hardware, and accessory parts separated in schedules.",
+        "Use clear parent-view references for all joinery and cable-management details.",
+    ])
+
+    if material_thickness < 18 and build_system == "modular_slot":
+        warnings.append("Material thickness below 18 mm may reduce stiffness for panel-based desk construction.")
+    if material_thickness > 25:
+        recommendations.append("Thicker material selected; confirm hardware length, edge finishing, and slot/dado clearance.")
+
+    if build_system == "modular_slot":
+        drawing_notes.extend([
+            "Plan view must show true under-top footprints for rails, rear shear panel, centre stiffener, and cable tray.",
+            "Front elevation must show visible members solid/filled and hidden rear items dashed only.",
+            "Side elevation must remain simple; hidden construction belongs in the side section/cutaway.",
+            "Side section must explain P05 rear shear, A01 tray fixing, A02 grommet, and A03 tray exit.",
+            "Ghosted underside isometric must not swap labels between P05 rear shear, P06 centre stiffener, and A01 tray.",
+        ])
+
+    self_audit.extend([
+        "No fake legs/posts unless the selected build system actually uses them.",
+        "No floating tray, floating rail, or unexplained packer blocks.",
+        "No tray-as-structure unless explicitly selected and engineered as a structural member.",
+        "No hidden/visible line confusion in PDF views.",
+        "No overlapping labels, off-page dimensions, or detail notes without parent references.",
+    ])
+
+    if warnings:
+        status = "review_required"
+    elif recommendations:
+        status = "improvable"
+    else:
+        status = "clear"
+
+    return {
+        "status": status,
+        "build_system": build_system,
+        "desk_type": desk_type,
+        "overall_size_mm": {
+            "width": width,
+            "depth": depth,
+            "height": height,
+            "material_thickness": material_thickness,
+        },
+        "detected_parts": names,
+        "build_logic": build_logic,
+        "structural_review": structural_review,
+        "cable_management_review": cable_management_review,
+        "manufacturability_review": manufacturability_review,
+        "customer_guidance": customer_guidance,
+        "recommendations": recommendations,
+        "warnings": warnings,
+        "drawing_notes": drawing_notes,
+        "self_audit": self_audit,
+        "disclaimer": "Design guidance is a review aid only. Confirm structural requirements, hardware, CNC strategy, and workshop process before production.",
+    }
+
+
+
 # === BUILD SYSTEM V1: MODULAR SLOT ENGINE ===
 def make_part(
     name: str,
