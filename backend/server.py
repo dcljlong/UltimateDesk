@@ -909,7 +909,10 @@ def generate_design_guidance_v1(
     if width > 1600 and not has_centre_support:
         recommendations.append("For widths over 1600 mm, include a centre under-top stiffener or confirm top thickness/span is acceptable.")
     if width > 1800:
-        warnings.append("Span review required: desks over 1800 mm should not rely on an unsupported 18 mm top without a centre stiffener/support strategy.")
+        if has_centre_support:
+            structural_review.append("Wide-span centre support/stiffener logic is present for the desktop span.")
+        else:
+            warnings.append("Span review required: desks over 1800 mm should not rely on an unsupported 18 mm top without a centre stiffener/support strategy.")
     if depth > 800:
         recommendations.append("Depth over 800 mm: confirm grommet position, cable reach, and tray access from the user side.")
 
@@ -1032,6 +1035,7 @@ def make_part(
 
 def add_slot_joinery(parts: List[Dict[str, Any]], params: DesignParams):
     t = int(params.material_thickness)
+    housing_depth = max(6, min(12, int(round(t * 0.5))))
 
     for p in parts:
         name = str(p.get("name", ""))
@@ -1043,36 +1047,28 @@ def add_slot_joinery(parts: List[Dict[str, Any]], params: DesignParams):
             side_name = "left" if "Left" in name else "right"
             p["slots"] = [
                 {
-                    "id": f"{side_name}_rear_shear_slot",
-                    "type": "vertical_tab_slot",
-                    "accepts": "Rear Shear Panel",
-                    "position": "rear vertical edge",
+                    "id": f"{side_name}_front_under_top_rail_housing",
+                    "type": "stopped_housing_dado",
+                    "accepts": "Front Under-Top Rail",
+                    "position": "inside front face, tight below desktop underside",
                     "width": t,
-                    "depth": t,
-                    "purpose": "Locks rear shear panel into side panel to resist racking.",
+                    "depth": housing_depth,
+                    "purpose": "Receives the front under-top rail and provides a bearing shoulder.",
                 },
                 {
-                    "id": f"{side_name}_rear_stretcher_slot",
-                    "type": "horizontal_tab_slot",
-                    "accepts": "Rear Stretcher",
-                    "position": "inside rear face, below desktop",
+                    "id": f"{side_name}_rear_shear_panel_housing",
+                    "type": "stopped_housing_dado",
+                    "accepts": "Rear Shear / Modesty Panel",
+                    "position": "inside rear face / service side",
                     "width": t,
-                    "depth": t,
-                    "purpose": "Locates rear stretcher between side panels.",
-                },
-                {
-                    "id": f"{side_name}_front_locking_rail_slot",
-                    "type": "horizontal_tab_slot",
-                    "accepts": "Front Locking Rail",
-                    "position": "front/user face, below desktop",
-                    "width": t,
-                    "depth": t,
-                    "purpose": "Locates front locking rail and keeps side panels parallel.",
+                    "depth": housing_depth,
+                    "purpose": "Receives rear shear panel to resist racking.",
                 },
             ]
             p["fixing_points"] = [
                 "Clamp side panels square before permanent fixing.",
-                "Confirm front/back orientation before fitting rails.",
+                "Confirm front/back orientation before fitting rail and rear shear panel.",
+                "Use housed/dado joints plus screw/glue fixing where required.",
                 "Do not rely on desktop alone to stop racking.",
             ]
 
@@ -1081,69 +1077,101 @@ def add_slot_joinery(parts: List[Dict[str, Any]], params: DesignParams):
                 {
                     "id": "desktop_side_panel_bearing",
                     "type": "bearing_surface",
-                    "mates_with": ["Side Panel Left", "Side Panel Right", "Centre Support Panel"],
+                    "mates_with": ["Side Panel Left", "Side Panel Right", "Centre Under-Top Stiffener"],
                     "position": "underside support lines",
-                    "purpose": "Desktop bears on vertical panels and is fixed only after base is square.",
-                }
+                    "purpose": "Desktop bears on vertical panels and under-top stiffeners and is fixed only after base is square.",
+                },
+                {
+                    "id": "desktop_front_rail_fixing",
+                    "type": "underside_screw_fixing",
+                    "mates_with": ["Front Under-Top Rail"],
+                    "position": "front underside fixing line",
+                    "purpose": "Ties front edge to the under-top rail without breaking through desktop surface.",
+                },
             ]
             p["fixing_points"] = [
                 "Align equal overhang before fixing.",
                 "Use underside screw / pilot fixing only after base is square.",
                 "Avoid screw breakthrough through desktop.",
+                "Confirm cable grommet is on rear/service side.",
             ]
 
-        elif name == "Rear Shear Panel":
+        elif name == "Front Under-Top Rail":
             p["joinery"] = [
                 {
-                    "id": "rear_shear_panel_tabs",
-                    "type": "side_tabs_or_screw_line",
-                    "mates_with": ["Side Panel Left", "Side Panel Right"],
-                    "position": "back/service face",
-                    "purpose": "Primary anti-racking panel; stops sideways folding.",
+                    "id": "front_under_top_rail_housed_ends",
+                    "type": "housed_rebated_rail_ends",
+                    "mates_with": ["Side Panel Left", "Side Panel Right", "Desktop Top"],
+                    "position": "front/user side, tight under desktop",
+                    "purpose": "Ties side panels together and stiffens the front desktop edge.",
+                }
+            ]
+            p["fixing_points"] = [
+                "Seat rail ends into side-panel housings.",
+                "Keep rail tight to underside of desktop.",
+                "Fix with screw/glue or confirmed furniture connector detail.",
+            ]
+
+        elif name == "Rear Shear / Modesty Panel":
+            p["joinery"] = [
+                {
+                    "id": "rear_shear_panel_housed_edges",
+                    "type": "housed_rear_panel",
+                    "mates_with": ["Side Panel Left", "Side Panel Right", "Desktop Top", "Cable Tray Module"],
+                    "position": "rear/service face",
+                    "purpose": "Primary anti-racking panel; stops sideways folding and carries cable tray accessory fixing.",
                 }
             ]
             p["fixing_points"] = [
                 "Fit before desktop where possible.",
                 "Clamp desk square before final fixing.",
                 "Rear shear panel is structural; cable tray is not.",
+                "Cable tray fixes to inside face only as an accessory.",
             ]
 
-        elif name == "Rear Stretcher":
+        elif name == "Centre Under-Top Stiffener":
             p["joinery"] = [
                 {
-                    "id": "rear_stretcher_end_tabs",
-                    "type": "end_tabs",
-                    "mates_with": ["Side Panel Left", "Side Panel Right"],
-                    "position": "inside rear, below desktop",
-                    "purpose": "Keeps rear span aligned and supports rear edge zone.",
+                    "id": "centre_under_top_stiffener_fixing",
+                    "type": "under_top_web",
+                    "mates_with": ["Desktop Top", "Rear Shear / Modesty Panel"],
+                    "position": "centre underside, front-to-back",
+                    "purpose": "Reduces desktop span and improves stiffness without adding a centre leg.",
                 }
             ]
+            p["fixing_points"] = [
+                "Keep centred on desk width.",
+                "Confirm knee clearance and cable path before fixing.",
+                "Fix to underside of top using pilot holes and no-breakthrough screw lengths.",
+            ]
 
-        elif name == "Front Locking Rail":
+        elif name == "Cable Tray Module":
             p["joinery"] = [
                 {
-                    "id": "front_locking_rail_end_tabs",
-                    "type": "end_tabs",
-                    "mates_with": ["Side Panel Left", "Side Panel Right"],
-                    "position": "front/user side, below desktop",
-                    "purpose": "Locks side panels parallel while keeping user side open.",
+                    "id": "cable_tray_to_rear_shear_panel",
+                    "type": "accessory_fixing",
+                    "mates_with": ["Rear Shear / Modesty Panel"],
+                    "position": "inside face of rear shear panel, below desktop",
+                    "purpose": "Non-structural cable management tray fixed with accessible screws.",
                 }
             ]
-
-        elif name == "Centre Support Panel":
-            p["slots"] = [
-                {
-                    "id": "centre_support_desktop_bearing",
-                    "type": "centre_bearing_support",
-                    "accepts": "Desktop Top",
-                    "position": "centre underside",
-                    "width": t,
-                    "depth": t,
-                    "purpose": "Reduces desktop span and sag on wide desks.",
-                }
+            p["components"] = [
+                "Tray bottom",
+                "Front lip",
+                "Rear wall / fixing cleat",
+                "End cheeks",
+                "A03 tray-bottom exit bush",
+            ]
+            p["fixing_points"] = [
+                "Fix tray rear wall/cleat to inside face of rear shear panel.",
+                "Keep tray inside desk envelope so desk can sit near wall.",
+                "Cable exit belongs in tray bottom or tray end, not in structural rails.",
+                "Cable tray is accessory only and must not be used as a structural member.",
             ]
 
     return parts
+
+
 
 
 def calculate_modular_slot_parts(params: DesignParams) -> List[Dict[str, Any]]:
@@ -1154,6 +1182,15 @@ def calculate_modular_slot_parts(params: DesignParams) -> List[Dict[str, Any]]:
     panel_h = height - t
     clear_width = width - (t * 2)
 
+    cable_enabled = bool(getattr(params, "has_cable_management", False))
+    cable_cutout_style = str(getattr(params, "cable_cutout_style", "rear_center") or "rear_center").strip().lower()
+    cable_tray_style = str(getattr(params, "cable_tray_style", "standard") or "standard").strip().lower()
+
+    front_rail_h = max(70, min(110, int(round(height * 0.11))))
+    rear_panel_h = max(360, min(520, int(round(height * 0.55))))
+    centre_stiffener_h = max(70, min(110, int(round(height * 0.11))))
+    centre_stiffener_len = max(300, depth - 140)
+
     parts: List[Dict[str, Any]] = [
         make_part(
             "Desktop Top",
@@ -1162,14 +1199,14 @@ def calculate_modular_slot_parts(params: DesignParams) -> List[Dict[str, Any]]:
             "primary_surface",
             "load_surface",
             "Main horizontal work surface. It sits over the side panels and is fixed after the base is square.",
-            "Fix down to side panels, rear stretcher/shear panel, and centre support where present.",
+            "Fix down to side panels, front under-top rail, rear shear/modesty panel, and centre stiffener where present.",
             part_id="P01",
             placement="top horizontal panel",
             orientation="FRONT edge faces user; BACK edge faces cable/accessory side",
-            joins_to=["Side Panel Left", "Side Panel Right", "Rear Stretcher", "Rear Shear Panel", "Centre Support Panel"],
+            joins_to=["Side Panel Left", "Side Panel Right", "Front Under-Top Rail", "Rear Shear / Modesty Panel", "Centre Under-Top Stiffener"],
             assembly_step=5,
             critical_check="Confirm equal overhang and cable cutout orientation before fixing.",
-            install_note="Do not install desktop until side panels, front rail, rear stretcher, and rear shear panel are square.",
+            install_note="Do not install desktop until side panels, front rail, and rear shear panel are square.",
         ),
         make_part(
             "Side Panel Left",
@@ -1178,13 +1215,13 @@ def calculate_modular_slot_parts(params: DesignParams) -> List[Dict[str, Any]]:
             "structure",
             "vertical_support",
             "Left full-depth vertical support panel. This is the left load-bearing side from the seated/user position.",
-            "Receives rear shear panel, rear stretcher, and front locking rail in slots or fixing lines.",
+            "Receives front under-top rail and rear shear/modesty panel in housed/dado joints or fixing lines.",
             part_id="P02",
             placement="left vertical side",
             orientation="FRONT edge faces user side; BACK edge faces cable/accessory side; outside face points left",
-            joins_to=["Desktop Top", "Rear Stretcher", "Front Locking Rail", "Rear Shear Panel"],
+            joins_to=["Desktop Top", "Front Under-Top Rail", "Rear Shear / Modesty Panel"],
             assembly_step=1,
-            critical_check="Confirm handed orientation before slotting rails.",
+            critical_check="Confirm handed orientation before cutting or slotting rail/rear-panel housings.",
             install_note="Stand upright first with right side panel.",
         ),
         make_part(
@@ -1194,82 +1231,151 @@ def calculate_modular_slot_parts(params: DesignParams) -> List[Dict[str, Any]]:
             "structure",
             "vertical_support",
             "Right full-depth vertical support panel. This is the right load-bearing side from the seated/user position.",
-            "Receives rear shear panel, rear stretcher, and front locking rail in slots or fixing lines.",
+            "Receives front under-top rail and rear shear/modesty panel in housed/dado joints or fixing lines.",
             part_id="P03",
             placement="right vertical side",
             orientation="FRONT edge faces user side; BACK edge faces cable/accessory side; outside face points right",
-            joins_to=["Desktop Top", "Rear Stretcher", "Front Locking Rail", "Rear Shear Panel"],
+            joins_to=["Desktop Top", "Front Under-Top Rail", "Rear Shear / Modesty Panel"],
             assembly_step=1,
-            critical_check="Confirm handed orientation before slotting rails.",
+            critical_check="Confirm handed orientation before cutting or slotting rail/rear-panel housings.",
             install_note="Stand upright first with left side panel.",
         ),
         make_part(
-            "Rear Shear Panel",
+            "Front Under-Top Rail",
             clear_width,
-            400,
+            front_rail_h,
+            "structure",
+            "front_stiffening",
+            "Front/user-side under-top rail. It ties the side panels together and stiffens the front edge while keeping knee space open.",
+            "Housed into both side panels at the front/user side and fixed tight to the desktop underside.",
+            part_id="P04",
+            placement="front/user side between side panels, tight under desktop",
+            orientation="Long edge horizontal across width; top edge tight to underside of desktop",
+            joins_to=["Side Panel Left", "Side Panel Right", "Desktop Top"],
+            assembly_step=2,
+            critical_check="Confirm this is fitted to the user/front side, not the rear.",
+            install_note="Fit before desktop and keep tight to underside line.",
+        ),
+        make_part(
+            "Rear Shear / Modesty Panel",
+            clear_width,
+            rear_panel_h,
             "structure",
             "anti_racking",
-            "Main rear anti-racking panel. This stops the desk folding sideways and defines the back/service face.",
-            "Tabs or screws into both side panels on the rear/service side.",
-            part_id="P04",
+            "Full-width rear anti-racking/modesty panel. This stops the desk folding sideways and defines the back/service face.",
+            "Housed, rebated, or screw-fixed into both side panels on the rear/service side.",
+            part_id="P05",
             placement="rear/back face between side panels",
             orientation="Long edge horizontal; visible face toward rear/service side",
-            joins_to=["Side Panel Left", "Side Panel Right", "Desktop Top"],
+            joins_to=["Side Panel Left", "Side Panel Right", "Desktop Top", "Cable Tray Module"],
             assembly_step=3,
             critical_check="Clamp side panels square before final fixing.",
             install_note="This is structural. Do not confuse it with the cable tray.",
         ),
-        make_part(
-            "Rear Stretcher",
-            clear_width,
-            120,
-            "structure",
-            "rear_alignment",
-            "Upper rear alignment rail below the desktop. It helps keep the back span straight and supports the rear fixing zone.",
-            "Slots into both side panels at the rear/service side.",
-            part_id="P05",
-            placement="inside rear, below desktop",
-            orientation="Long edge horizontal across width",
-            joins_to=["Side Panel Left", "Side Panel Right", "Desktop Top"],
-            assembly_step=2,
-            critical_check="Keep flush and square between side panels.",
-            install_note="Fit with the front locking rail before final squaring.",
-        ),
-        make_part(
-            "Front Locking Rail",
-            clear_width,
-            80,
-            "structure",
-            "front_locking",
-            "Front/user-side locking rail. It keeps side panels parallel while leaving the seated side open.",
-            "Slots into both side panels at the front/user side.",
-            part_id="P06",
-            placement="front/user side between side panels",
-            orientation="Long edge horizontal across width",
-            joins_to=["Side Panel Left", "Side Panel Right"],
-            assembly_step=2,
-            critical_check="Confirm this is fitted to the user/front side, not the rear.",
-            install_note="Fit before desktop.",
-        ),
     ]
 
-    if width > 1800:
+    if width > 1600:
         parts.append(make_part(
-            "Centre Support Panel",
-            depth,
-            panel_h,
+            "Centre Under-Top Stiffener",
+            centre_stiffener_len,
+            centre_stiffener_h,
             "structure",
-            "vertical_support",
-            "Centre vertical support panel for wide desks. It reduces desktop span and sag.",
-            "Sits under desktop between side panels and aligns front/back with the side panels.",
-            part_id="P07",
+            "under_top_stiffener",
+            "Centre front-to-back under-top stiffener. It reduces desktop span and improves stiffness without acting as a centre leg.",
+            "Fixes to underside of desktop on the centreline using pilot holes and no-breakthrough screws.",
+            part_id="P06",
             placement="centre underside, front-to-back",
-            orientation="Full depth panel, centred between left and right side panels",
-            joins_to=["Desktop Top", "Rear Stretcher", "Rear Shear Panel"],
+            orientation="Long edge runs front-to-back under desktop at centreline",
+            joins_to=["Desktop Top", "Rear Shear / Modesty Panel"],
             assembly_step=4,
-            critical_check="Required for wide spans; confirm knee clearance and cable path.",
-            install_note="Fit before desktop on wide desks.",
+            critical_check="Confirm knee clearance, grommet location, and cable path before fixing.",
+            install_note="Fit before desktop final fixing on wider desks.",
         ))
+
+    if cable_enabled and cable_tray_style != "none":
+        tray_w = max(500, clear_width - 24)
+        tray_depth = 180 if cable_tray_style == "premium" else 140
+        tray_h = 100 if cable_tray_style == "premium" else 85
+
+        tray = make_part(
+            "Cable Tray Module",
+            tray_w,
+            tray_depth,
+            "accessory",
+            "cable_management",
+            "Full-width non-structural plywood cable tray module with bottom, front lip, rear fixing cleat/wall, end cheeks, and tray-bottom exit.",
+            "Fix to the inside face of the rear shear/modesty panel with accessible screws; do not use as structural bracing.",
+            part_id="A01",
+            placement="inside rear/service zone below desktop",
+            orientation="Long edge horizontal across width; tray remains inside desk envelope",
+            joins_to=["Rear Shear / Modesty Panel", "Desktop Top"],
+            assembly_step=6,
+            critical_check="Confirm tray does not project past back face and cable exit is in tray only.",
+            install_note="Install after main frame is square. Cable tray is accessory only.",
+        )
+        tray["module_height"] = tray_h
+        tray["components"] = [
+            {"id": "A01-B", "name": "Tray bottom", "material_thickness": t},
+            {"id": "A01-F", "name": "Front lip", "material_thickness": t},
+            {"id": "A01-R", "name": "Rear wall / fixing cleat", "material_thickness": t},
+            {"id": "A01-E", "name": "End cheeks", "material_thickness": t},
+        ]
+        tray["cutouts"] = [
+            {
+                "id": "A03",
+                "name": "tray-bottom cable exit bush",
+                "type": "cutout",
+                "shape": "rounded_slot",
+                "x": int(max(90, min(tray_w - 90, tray_w * 0.18))),
+                "y": int(tray_depth / 2),
+                "width": 90,
+                "height": 35,
+                "purpose": "Allows power/data lead to exit tray bottom or end without cutting structural rails.",
+            }
+        ]
+        parts.append(tray)
+
+        desktop = parts[0]
+        desktop.setdefault("cutouts", [])
+        if cable_cutout_style == "dual_grommet":
+            for suffix, x in (("left", width * 0.32), ("right", width * 0.68)):
+                desktop["cutouts"].append({
+                    "id": f"A02-{suffix}",
+                    "name": f"{suffix} rear 60 mm cable grommet",
+                    "type": "cutout",
+                    "shape": "circle",
+                    "x": int(x),
+                    "y": int(depth - 115),
+                    "diameter": 60,
+                    "width": 60,
+                    "height": 60,
+                    "purpose": "Cable entry through desktop into rear cable tray zone.",
+                })
+        elif cable_cutout_style == "long_slot":
+            desktop["cutouts"].append({
+                "id": "A02",
+                "name": "long rear cable slot",
+                "type": "cutout",
+                "shape": "rounded_slot",
+                "x": int(width / 2),
+                "y": int(depth - 115),
+                "width": min(520, max(220, int(width * 0.28))),
+                "height": 38,
+                "purpose": "Cable entry through desktop into rear cable tray zone.",
+            })
+        else:
+            desktop["cutouts"].append({
+                "id": "A02",
+                "name": "rear-centred 60 mm cable grommet",
+                "type": "cutout",
+                "shape": "circle",
+                "x": int(width / 2),
+                "y": int(depth - 115),
+                "diameter": 60,
+                "width": 60,
+                "height": 60,
+                "purpose": "Cable entry through desktop into rear cable tray zone.",
+            })
 
     parts = add_slot_joinery(parts, params)
     params.structural_warnings = validate_design_v1(params, parts)
